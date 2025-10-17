@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Copy requirements.txt and application code
 COPY requirements.txt .
-COPY shopify23$.py .
+COPY app.py .
 COPY gunicorn_config.py .
 
 # Install system dependencies and clean up
@@ -21,4 +21,4 @@ RUN apt-get update && \
 EXPOSE 5000
 
 # Run the application with Gunicorn
-CMD ["gunicorn", "--config", "gunicorn_config.py", "shopify23$:app"]
+CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]
