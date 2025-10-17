@@ -11,7 +11,7 @@ import uuid
 app = Flask(__name__)
 
 # Configure logging
-logging.basicConfig(filename='shopify23$_debug.log', level=logging.INFO,
+logging.basicConfig(filename='shopify23_debug.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Headers and cookies (based on provided scripts)
