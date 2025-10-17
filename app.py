@@ -13,22 +13,14 @@ def process_paypal_response(raw_text):
             response_msg = parts[2].split('</span>')[0].strip()
         else:
             response_msg = "PAYPAL_APPROVED"
-    elif 'text-danger">DECLINED<' in raw_text:
+    else:
         status = "DECLINED"
         parts = raw_text.split('class="text-danger">')
         if len(parts) > 2:
             response_msg = parts[2].split('</span>')[0].strip()
         else:
-            response_msg = "PAYPAL_DECLINED"
-    else:
-        status = "UNKNOWN"
-        # Extract the raw response message between span tags if available
-        parts = raw_text.split('<span>')
-        if len(parts) > 1:
-            response_msg = parts[1].split('</span>')[0].strip()
-        else:
-            response_msg = raw_text.strip()  # Fallback to raw text if no span tags
-
+            response_msg = "CARD DECLINED"
+    
     return {
         "response": response_msg,
         "status": status
@@ -101,3 +93,5 @@ def paypal_gateway():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
+
+in this update the unknown_response at there the response that coes from the api should come
