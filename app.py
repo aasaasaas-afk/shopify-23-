@@ -6,6 +6,14 @@ app = Flask(__name__)
 
 def process_paypal_response(raw_text):
     """Extract status and response message from raw HTML"""
+    # Check for server error responses (e.g., 503 Service Unavailable)
+    if 'Service Unavailable' in raw_text or '503' in raw_text:
+        return {
+            "response": "CARD DECLINED",
+            "status": "DECLINED"
+        }
+
+    # Check for approved status
     if 'text-success">APPROVED<' in raw_text:
         status = "APPROVED"
         parts = raw_text.split('class="text-success">')
@@ -14,13 +22,14 @@ def process_paypal_response(raw_text):
         else:
             response_msg = "PAYPAL_APPROVED"
     else:
+        # Assume declined if not approved
         status = "DECLINED"
         parts = raw_text.split('class="text-danger">')
         if len(parts) > 2:
             response_msg = parts[2].split('</span>')[0].strip()
         else:
             response_msg = "CARD DECLINED"
-    
+
     return {
         "response": response_msg,
         "status": status
@@ -93,5 +102,3 @@ def paypal_gateway():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
-
-in this update the unknown_response at there the response that coes from the api should come
