@@ -6,8 +6,8 @@ app = Flask(__name__)
 
 def process_paypal_response(raw_text):
     """Extract status and response message from raw HTML"""
-    # Check for server error responses (e.g., 503 Service Unavailable)
-    if 'Service Unavailable' in raw_text or '503' in raw_text:
+    # Check for server error responses (502 or 503)
+    if '502' in raw_text or '503' in raw_text:
         return {
             "response": "CARD DECLINED",
             "status": "DECLINED"
@@ -22,7 +22,7 @@ def process_paypal_response(raw_text):
         else:
             response_msg = "PAYPAL_APPROVED"
     else:
-        # Assume declined if not approved
+        # Check for declined status
         status = "DECLINED"
         parts = raw_text.split('class="text-danger">')
         if len(parts) > 2:
