@@ -13,14 +13,17 @@ def process_paypal_response(raw_text):
             "status": "DECLINED"
         }
 
-    # Check for approved status
-    if 'text-success">APPROVED<' in raw_text:
+    # Check for approved status or specific conditions
+    if 'text-success">APPROVED<' in raw_text or 'EXISTING_ACCOUNT_RESTRICTED' in raw_text:
         status = "APPROVED"
         parts = raw_text.split('class="text-success">')
         if len(parts) > 2:
             response_msg = parts[2].split('</span>')[0].strip()
         else:
-            response_msg = "PAYPAL_APPROVED"
+            response_msg = "PAYPAL_APPROVED" if 'APPROVED' in raw_text else "EXISTING_ACCOUNT_RESTRICTED"
+    elif 'CARD ADDED' in raw_text:
+        status = "CHARGED"
+        response_msg = "CARD ADDED"
     else:
         # Check for declined status
         status = "DECLINED"
