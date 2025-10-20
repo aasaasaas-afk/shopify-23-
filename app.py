@@ -22,7 +22,7 @@ def process_paypal_response(raw_text):
         else:
             response_msg = "PAYPAL_APPROVED" if 'APPROVED' in raw_text else "EXISTING_ACCOUNT_RESTRICTED"
     elif 'CARD ADDED' in raw_text:
-        status = "CHARGED"
+        status = "APPROVED"
         response_msg = "CARD ADDED"
     else:
         # Check for declined status
