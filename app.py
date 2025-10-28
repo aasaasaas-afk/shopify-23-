@@ -69,6 +69,12 @@ def check_paypal_card(cc_details):
                     "response": "CARD DECLINED",
                     "status": "declined"
                 }
+            elif data['response_code'] == "UNKNOWN_ERROR":
+                return {
+                    "gateway": "Paypal [0.1$]",
+                    "response": "CARD DECLINED",
+                    "status": "declined"
+                }                
             else:
                 return {
                     "gateway": "Paypal [0.1$]",
