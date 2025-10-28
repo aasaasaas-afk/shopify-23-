@@ -36,6 +36,12 @@ def check_paypal_card(cc_details):
                     "response": "EXISTING_ACCOUNT_RESTRICTED",
                     "status": "approved"
                 }
+            elif data['response_code'] == "CARD_GENERIC_ERROR":
+                return {
+                    "gateway": "Paypal [0.1$]",
+                    "response": "ISSUER_DECLINE",
+                    "status": "declined"
+                }
             else:
                 return {
                     "gateway": "Paypal [0.1$]",
@@ -44,13 +50,20 @@ def check_paypal_card(cc_details):
                 }
                 
         elif data['status'] == "DEAD":
-            # For DEAD status, always show declined with response_code
-            return {
-                "gateway": "Paypal [0.1$]",
-                "response": data['response_code'],
-                "status": "declined"
-            }
-            
+            # For DEAD status, check for special response codes
+            if data['response_code'] == "CARD_GENERIC_ERROR":
+                return {
+                    "gateway": "Paypal [0.1$]",
+                    "response": "CARD DECLINED",
+                    "status": "declined"
+                }
+            else:
+                return {
+                    "gateway": "Paypal [0.1$]",
+                    "response": data['response_code'],
+                    "status": "declined"
+                }
+                
         else:
             # Handle unexpected status values
             return {
