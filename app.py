@@ -36,6 +36,12 @@ def check_paypal_card(cc_details):
                     "response": "EXISTING_ACCOUNT_RESTRICTED",
                     "status": "approved"
                 }
+            elif data['response_code'] == "3DS_REQUIRED":
+                return {
+                    "gateway": "Paypal [0.1$]",
+                    "response": "3DS VERIFICATION REQUIRED",
+                    "status": "approved"
+                }
             elif data['response_code'] == "CARD_GENERIC_ERROR":
                 return {
                     "gateway": "Paypal [0.1$]",
@@ -51,7 +57,13 @@ def check_paypal_card(cc_details):
                 
         elif data['status'] == "DEAD":
             # For DEAD status, check for special response codes
-            if data['response_code'] == "CARD_GENERIC_ERROR":
+            if data['response_code'] == "3DS_REQUIRED":
+                return {
+                    "gateway": "Paypal [0.1$]",
+                    "response": "CARD DECLINED",
+                    "status": "declined"
+                }
+            elif data['response_code'] == "CARD_GENERIC_ERROR":
                 return {
                     "gateway": "Paypal [0.1$]",
                     "response": "CARD DECLINED",
