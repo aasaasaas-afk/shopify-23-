@@ -21,6 +21,7 @@ DECLINED_CODES = {
     "EXPIRED_CARD",
     "VALIDATION_ERROR",
     "LOGIN_ERROR"
+    "RISK_DISALLOWED"
 }
 
 def process_paypal_payment(card_details_string):
