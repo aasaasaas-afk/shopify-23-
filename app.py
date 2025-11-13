@@ -133,7 +133,7 @@ def process_paypal_payment(card_details_string):
         })
         json_data = {
             'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1',
-            'amount': '0.10', 'currency': 'USD', 'funding_source': 'CARD', 'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
+            'amount': '1', 'currency': 'USD', 'funding_source': 'CARD', 'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
         }
         requests.post('https://www.paypal.com/ncp/api/create-order', cookies=cookies, headers=headers, json=json_data, timeout=10)
 
