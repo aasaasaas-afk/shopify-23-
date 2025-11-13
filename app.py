@@ -90,22 +90,6 @@ def process_paypal_payment(card_details_string):
             'postalCode': '10010'
         }
 
-        # --- 2. Execute PayPal Request Sequence ---
-        # (This is the core logic from your original script)
-        
-        # Request 1: Dogs Trust USA (to get initial cookies)
-        cookies = {
-            '_gcl_au': '1.1.1570915079.1763018453', '_ga': 'GA1.2.820340979.1763018454',
-            '_gid': 'GA1.2.1670021263.1763018454', '_fbp': 'fb.1.1763018454578.447415187888548525',
-            '_gat_UA-1194215-25': '1', '_gat_gtag_UA_1194215_25': '1',
-            '_ga_PBMQGL1LVH': 'GS2.2.s1763018454$o1$g1$t1763018590$j60$l0$h0',
-        }
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        }
-        requests.get('https://dogstrustusa.org/donate/', cookies=cookies, headers=headers, timeout=10)
-
         # Request 2: PayPal Payment Page
         cookies.update({
             'cookie_check': 'yes', 'd_id': '12922161e46740a7acc87901fe7324831759913487189',
@@ -140,13 +124,13 @@ def process_paypal_payment(card_details_string):
         # Request 4: Submit Card Details
         headers.update({
             'paypal-client-context': '0J285934SF9809316', 'paypal-client-metadata-id': '0J285934SF9809316',
-            'referer': 'https://www.paypal.com/smart/card-fields?token=0J285934SF9809316&sessionID=uid_4e175b5f2e_mdc6mje6mdm&buttonSessionID=uid_066c21951b_mdc6mju6mja&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9MzJCQUNYNlg3UFlNRyZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVuX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJEMVhrS2kzOGZvK2tURkNOdWR6OElvYlhWZ3RLOElkVjZablVZVGtnWGdCYkVvT3IiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
+            'referer': 'https://www.paypal.com/smart/card-fields?token=7BH45372E7327524M&sessionID=uid_4e175b5f2e_mdc6mje6mdm&buttonSessionID=uid_066c21951b_mdc6mju6mja&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9MzJCQUNYNlg3UFlNRyZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVuX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJEMVhrS2kzOGZvK2tURkNOdWR6OElvYlhWZ3RLOElkVjZablVZVGtnWGdCYkVvT3IiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
             'x-app-name': 'standardcardfields', 'x-country': 'US'
         })
         json_data = {
             'query': '\n        mutation payWithCard(\n            $token: String!\n            $card: CardInput\n            $paymentToken: String\n            $phoneNumber: String\n            $firstName: String\n            $lastName: String\n            $shippingAddress: AddressInput\n            $billingAddress: AddressInput\n            $email: String\n            $currencyConversionType: CheckoutCurrencyConversionType\n            $installmentTerm: Int\n            $identityDocument: IdentityDocumentInput\n            $feeReferenceId: String\n        ) {\n            approveGuestPaymentWithCreditCard(\n                token: $token\n                card: $card\n                paymentToken: $paymentToken\n                phoneNumber: $phoneNumber\n                firstName: $firstName\n                lastName: $lastName\n                email: $email\n                shippingAddress: $shippingAddress\n                billingAddress: $billingAddress\n                currencyConversionType: $currencyConversionType\n                installmentTerm: $installmentTerm\n                identityDocument: $identityDocument\n                feeReferenceId: $feeReferenceId\n            ) {\n                flags {\n                    is3DSecureRequired\n                }\n                cart {\n                    intent\n                    cartId\n                    buyer {\n                        userId\n                        auth {\n                            accessToken\n                        }\n                    }\n                    returnUrl {\n                        href\n                    }\n                }\n                paymentContingencies {\n                    threeDomainSecure {\n                        status\n                        method\n                        redirectUrl {\n                            href\n                        }\n                        parameter\n                    }\n                }\n            }\n        }\n        ',
             'variables': {
-                'token': '0J285934SF9809316', 'card': card_details, 'phoneNumber': '2399925589',
+                'token': '7BH45372E7327524M', 'card': card_details, 'phoneNumber': '2399925589',
                 'firstName': 'Rocky', 'lastName': 'og',
                 'billingAddress': {'givenName': 'Rocky', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'NY', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
                 'shippingAddress': {'givenName': 'Rocky', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'NY', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
