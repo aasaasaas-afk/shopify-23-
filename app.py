@@ -1,7 +1,6 @@
 import requests
 import json
 import logging
-import traceback
 from flask import Flask, jsonify
 
 # Configure logging
@@ -134,7 +133,7 @@ def process_paypal_payment(card_details_string):
         })
         json_data = {
             'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1',
-            'amount': '0.01', 'currency': 'EUR', 'funding_source': 'CARD', 'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
+            'amount': '0.10', 'currency': 'USD', 'funding_source': 'CARD', 'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
         }
         requests.post('https://www.paypal.com/ncp/api/create-order', cookies=cookies, headers=headers, json=json_data, timeout=10)
 
@@ -162,33 +161,19 @@ def process_paypal_payment(card_details_string):
         result = {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
 
         if 'errors' in response_data and response_data['errors']:
-            # Extract the first error object
+            # Extract the first error code and message
             error_data = response_data['errors'][0]
-            
-            # Robustly extract the error code and message from the 'data' field
-            # The 'data' field can be a list of objects or a single object.
-            data_field = error_data.get('data')
-            error_info = {}
-            if isinstance(data_field, list) and data_field:
-                # It's a list, use the first element
-                error_info = data_field[0]
-            elif isinstance(data_field, dict):
-                # It's a dictionary, use it directly
-                error_info = data_field
-            
-            result['code'] = error_info.get('code', 'UNKNOWN_ERROR')
+            result['code'] = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
             result['message'] = error_data.get('message', 'An unknown error occurred.')
         
         return result
 
     except requests.exceptions.RequestException as e:
-        error_msg = f"Network error during PayPal processing: {str(e)}"
-        logging.error(error_msg)
-        return {'code': 'NETWORK_ERROR', 'message': error_msg}
+        logging.error(f"Network error during PayPal processing: {e}")
+        return {'code': 'NETWORK_ERROR', 'message': 'Could not connect to payment gateway.'}
     except Exception as e:
-        error_msg = f"An unexpected error occurred: {str(e)}\n{traceback.format_exc()}"
-        logging.error(error_msg)
-        return {'code': 'INTERNAL_ERROR', 'message': error_msg}
+        logging.error(f"An unexpected error occurred: {e}")
+        return {'code': 'INTERNAL_ERROR', 'message': 'An internal server error occurred.'}
 
 
 @app.route('/gate=pp1/cc=<card_details>')
