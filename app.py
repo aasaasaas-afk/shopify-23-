@@ -162,9 +162,21 @@ def process_paypal_payment(card_details_string):
         result = {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
 
         if 'errors' in response_data and response_data['errors']:
-            # Extract the first error code and message
+            # Extract the first error object
             error_data = response_data['errors'][0]
-            result['code'] = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
+            
+            # Robustly extract the error code and message from the 'data' field
+            # The 'data' field can be a list of objects or a single object.
+            data_field = error_data.get('data')
+            error_info = {}
+            if isinstance(data_field, list) and data_field:
+                # It's a list, use the first element
+                error_info = data_field[0]
+            elif isinstance(data_field, dict):
+                # It's a dictionary, use it directly
+                error_info = data_field
+            
+            result['code'] = error_info.get('code', 'UNKNOWN_ERROR')
             result['message'] = error_data.get('message', 'An unknown error occurred.')
         
         return result
