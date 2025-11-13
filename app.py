@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+import traceback
 from flask import Flask, jsonify
 
 # Configure logging
@@ -169,11 +170,13 @@ def process_paypal_payment(card_details_string):
         return result
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Network error during PayPal processing: {e}")
-        return {'code': 'NETWORK_ERROR', 'message': 'Could not connect to payment gateway.'}
+        error_msg = f"Network error during PayPal processing: {str(e)}"
+        logging.error(error_msg)
+        return {'code': 'NETWORK_ERROR', 'message': error_msg}
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}")
-        return {'code': 'INTERNAL_ERROR', 'message': 'An internal server error occurred.'}
+        error_msg = f"An unexpected error occurred: {str(e)}\n{traceback.format_exc()}"
+        logging.error(error_msg)
+        return {'code': 'INTERNAL_ERROR', 'message': error_msg}
 
 
 @app.route('/gate=pp1/cc=<card_details>')
