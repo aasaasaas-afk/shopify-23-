@@ -2,6 +2,7 @@ import requests
 import json
 import logging
 from flask import Flask, jsonify
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -91,7 +92,6 @@ def process_paypal_payment(card_details_string):
         }
 
         # --- 2. Execute PayPal Request Sequence ---
-        # (This is the core logic from your original script)
         
         # Updated cookies
         cookies = {
@@ -155,24 +155,63 @@ def process_paypal_payment(card_details_string):
         requests.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', cookies=cookies, headers=headers, timeout=10)
 
         # Request 3: Create Order
-        headers.update({
-            'content-type': 'application/json', 
+        headers = {
+            'accept': '*/*',
+            'accept-language': 'en-US,en;q=0.9',
+            'cache-control': 'no-cache',
+            'content-type': 'application/json',
             'origin': 'https://www.paypal.com',
-            'x-csrf-token': 'v5ArOERBgP2jPK0jWmvbtSGBln33/23T7B8OI=', 
-            'traceparent': '00-000000000000000035c33ef71b24de23-1ac6b914c8dc9420-01'
-        })
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
+            'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            'sec-ch-ua-arch': '""',
+            'sec-ch-ua-bitness': '"64"',
+            'sec-ch-ua-full-version': '"142.0.7444.135"',
+            'sec-ch-ua-full-version-list': '"Chromium";v="142.0.7444.135", "Google Chrome";v="142.0.7444.135", "Not_A Brand";v="99.0.0.0"',
+            'sec-ch-ua-mobile': '?1',
+            'sec-ch-ua-model': '"Nexus 5"',
+            'sec-ch-ua-platform': '"Android"',
+            'sec-ch-ua-platform-version': '"6.0"',
+            'sec-ch-ua-wow64': '?0',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'traceparent': '00-0000000000000000e1742ccfe460d3b0-4a57ee7fce68539d-01',
+            'tracestate': 'dd=s:1;o:rum',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36',
+            'x-csrf-token': 'dHKSl2Liu3Kc0cI4Kjvy5VVK4vvKSAbs5bJRo=',
+            'x-datadog-origin': 'rum',
+            'x-datadog-parent-id': '5357012514471695261',
+            'x-datadog-sampling-priority': '1',
+            'x-datadog-trace-id': '16245659027233625008',
+        }
+        
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 
-            'merchant_id': '32BACX6X7PYMG', 
+            'link_id': 'R2FGT68WSSRLW',
+            'merchant_id': '32BACX6X7PYMG',
             'quantity': '1',
-            'amount': '1', 
-            'currency': 'USD', 
-            'funding_source': 'CARD', 
-            'button_type': 'VARIABLE_PRICE', 
+            'amount': '1',
+            'currency': 'USD',
+            'currencySymbol': '$',
+            'funding_source': 'CARD',
+            'button_type': 'VARIABLE_PRICE',
             'csrfRetryEnabled': True,
         }
-        requests.post('https://www.paypal.com/ncp/api/create-order', cookies=cookies, headers=headers, json=json_data, timeout=10)
-
+        
+        response = requests.post('https://www.paypal.com/ncp/api/create-order', cookies=cookies, headers=headers, json=json_data, timeout=10)
+        response_data = response.json()
+        
+        # Extract the token from the response
+        if 'context_id' not in response_data:
+            return {
+                'code': 'TOKEN_EXTRACTION_ERROR',
+                'message': 'Failed to extract token from PayPal response.'
+            }
+        
+        token = response_data['context_id']
+        csrf_token = response_data.get('csrfToken', '')
+        
         # Request 4: Submit Card Details (Updated headers and token)
         headers = {
             'accept': '*/*',
@@ -180,11 +219,11 @@ def process_paypal_payment(card_details_string):
             'cache-control': 'no-cache',
             'content-type': 'application/json',
             'origin': 'https://www.paypal.com',
-            'paypal-client-context': '7BH45372E7327524M',
-            'paypal-client-metadata-id': '7BH45372E7327524M',
+            'paypal-client-context': token,
+            'paypal-client-metadata-id': token,
             'pragma': 'no-cache',
             'priority': 'u=1, i',
-            'referer': 'https://www.paypal.com/smart/card-fields?token=7BH45372E7327524M&sessionID=uid_3343f8e4cd_mtq6mdu6ntu&buttonSessionID=uid_3ecbcad4f0_mtq6mdy6mzq&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9MzJCQUNYNlg3UFlNRyZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVuX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJkeHBBaHhPd3NXMDZJaWlFR3p1c3RxVFY3Q2FtckRJWEdvdHA1SUt6Q1pzNkhCUkQiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
+            'referer': f'https://www.paypal.com/smart/card-fields?token={token}&sessionID=uid_3343f8e4cd_mtq6mdu6ntu&buttonSessionID=uid_3ecbcad4f0_mtq6mdy6mzq&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9MzJCQUNYNlg3UFlNRyZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVuX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJkeHBBaHhPd3NXMDZJaWlFR3p1c3RxVFY3Q2FtckRJWEdvdHA1SUt6Q1pzNkhCUkQiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
             'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
             'sec-ch-ua-arch': '""',
             'sec-ch-ua-bitness': '"64"',
@@ -206,7 +245,7 @@ def process_paypal_payment(card_details_string):
         json_data = {
             'query': '\n        mutation payWithCard(\n            $token: String!\n            $card: CardInput\n            $paymentToken: String\n            $phoneNumber: String\n            $firstName: String\n            $lastName: String\n            $shippingAddress: AddressInput\n            $billingAddress: AddressInput\n            $email: String\n            $currencyConversionType: CheckoutCurrencyConversionType\n            $installmentTerm: Int\n            $identityDocument: IdentityDocumentInput\n            $feeReferenceId: String\n        ) {\n            approveGuestPaymentWithCreditCard(\n                token: $token\n                card: $card\n                paymentToken: $paymentToken\n                phoneNumber: $phoneNumber\n                firstName: $firstName\n                lastName: $lastName\n                email: $email\n                shippingAddress: $shippingAddress\n                billingAddress: $billingAddress\n                currencyConversionType: $currencyConversionType\n                installmentTerm: $installmentTerm\n                identityDocument: $identityDocument\n                feeReferenceId: $feeReferenceId\n            ) {\n                flags {\n                    is3DSecureRequired\n                }\n                cart {\n                    intent\n                    cartId\n                    buyer {\n                        userId\n                        auth {\n                            accessToken\n                        }\n                    }\n                    returnUrl {\n                        href\n                    }\n                }\n                paymentContingencies {\n                    threeDomainSecure {\n                        status\n                        method\n                        redirectUrl {\n                            href\n                        }\n                        parameter\n                    }\n                }\n            }\n        }\n        ',
             'variables': {
-                'token': '7BH45372E7327524M',  # Updated token
+                'token': token,  # Using the extracted token
                 'card': card_details, 
                 'phoneNumber': '4073320637',
                 'firstName': 'Rockcy', 
