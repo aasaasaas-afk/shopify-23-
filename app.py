@@ -83,6 +83,13 @@ def process_paypal_payment(card_details_string):
         else:
             card_type = 'UNKNOWN' # Fallback
 
+        # Determine currency conversion type based on card type
+        # AMEX cards need VENDOR currency conversion type
+        if card_type == 'AMEX':
+            currency_conversion_type = 'VENDOR'
+        else:
+            currency_conversion_type = 'PAYPAL'
+
         card_details = {
             'cardNumber': card_number,
             'type': card_type,
@@ -253,7 +260,7 @@ def process_paypal_payment(card_details_string):
                 'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
                 'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
                 'email': 'rocky2@gmail.com', 
-                'currencyConversionType': 'PAYPAL',
+                'currencyConversionType': currency_conversion_type,  # Using the determined currency conversion type
             }, 
             'operationName': None,
         }
