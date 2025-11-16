@@ -29,7 +29,8 @@ DECLINED_CODES = {
     "INTERNAL_ERROR",
     "INVALID_MONTH",
     "UNKNOWN_ERROR",
-    "3DS_REQUIRED" # Added for potential 3D Secure challenges
+    "3DS_REQUIRED",
+    "HTML_RESPONSE_ERROR" # New specific code for this issue
 }
 
 def extract_csrf_token(html_content):
@@ -168,13 +169,19 @@ def process_paypal_payment(card_details_string):
         logging.error(f"Failed to extract token after {max_acquisition_retries} full acquisition attempts.")
         return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'Failed to extract token from PayPal response after multiple retries.'}
 
-    # --- Request 3: Submit Card Details (IMPROVED ERROR HANDLING) ---
+    # --- Request 3: Submit Card Details (FIXED) ---
     headers = {
-        'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
-        'paypal-client-context': token, 'paypal-client-metadata-id': token,
+        'accept': '*/*', 
+        'content-type': 'application/json', 
+        'origin': 'https://www.paypal.com',
+        'paypal-client-context': token, 
+        'paypal-client-metadata-id': token,
         'referer': f'https://www.paypal.com/smart/card-fields?token={token}',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'x-app-name': 'standardcardfields', 'x-country': 'US',
+        'x-app-name': 'standardcardfields', 
+        'x-country': 'US',
+        # --- KEY FIX: Add this header to mimic a browser AJAX request ---
+        'x-requested-with': 'XMLHttpRequest',
     }
 
     graphql_query = """
@@ -255,45 +262,49 @@ def process_paypal_payment(card_details_string):
         
         logging.info(f"PayPal GraphQL Response Status: {response.status_code}")
         
-        # Check for non-200 status codes, which indicate an error from PayPal
         if response.status_code != 200:
             logging.error(f"PayPal API returned non-200 status: {response.status_code}. Body: {response.text[:500]}")
             return {'code': 'NETWORK_ERROR', 'message': f'PayPal returned an error status: {response.status_code}'}
 
-        # If status is 200, try to parse the JSON response
         try:
             response_data = response.json()
         except ValueError:
-            logging.error(f"Failed to decode JSON from PayPal. Response text: {response.text[:500]}")
-            return {'code': 'INTERNAL_ERROR', 'message': 'PayPal returned an invalid response format.'}
+            # --- KEY FIX: Improved error handling for HTML responses ---
+            response_text = response.text
+            logging.error(f"Failed to decode JSON from PayPal. PayPal returned an HTML page. Response text: {response_text[:1000]}")
+            
+            # Try to extract the page title for better diagnostics
+            title_match = re.search(r'<title>(.*?)</title>', response_text, re.IGNORECASE)
+            page_title = title_match.group(1).strip() if title_match else "Unknown Page"
+            
+            error_message = f'PayPal returned an HTML error page instead of a JSON response. Page Title: "{page_title}"'
+            logging.error(error_message)
+            
+            return {'code': 'HTML_RESPONSE_ERROR', 'message': error_message}
 
     except requests.exceptions.RequestException as e:
         logging.error(f"Network error during final PayPal request: {e}")
         return {'code': 'NETWORK_ERROR', 'message': 'Failed to connect to PayPal for payment submission.'}
 
-    # --- 3. Parse PayPal Response (IMPROVED LOGIC) ---
+    # --- 3. Parse PayPal Response ---
     if not response_data:
         return {'code': 'UNKNOWN_ERROR', 'message': 'No data received from PayPal.'}
 
-    # First, check for explicit errors in the GraphQL payload
     if 'errors' in response_data and response_data['errors']:
         error_data = response_data['errors'][0]
         error_code = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
         error_message = error_data.get('message', 'An unknown error occurred.')
         logging.error(f"PayPal returned a GraphQL error. Code: {error_code}, Message: {error_message}")
         
-        # Check for 3D Secure requirement
         if error_code == "PAYER_ACTION_REQUIRED":
              return {'code': '3DS_REQUIRED', 'message': '3D Secure authentication is required.'}
 
         return {'code': error_code, 'message': error_message}
 
-    # Second, check for the expected successful data structure
     if 'data' in response_data and response_data.get('data', {}).get('approveGuestPaymentWithCreditCard'):
         logging.info("Payment approved successfully by PayPal.")
         return {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
 
-    # If neither error nor success structure is found, it's an unexpected format
     logging.warning(f"Received an unexpected response format from PayPal: {json.dumps(response_data)}")
     return {'code': 'UNKNOWN_ERROR', 'message': 'Payment processed but received an unexpected confirmation from PayPal.'}
 
@@ -312,7 +323,7 @@ def payment_gateway(card_details):
     code = result.get('code')
     if code in APPROVED_CODES: status = 'approved'
     elif code in DECLINED_CODES: status = 'declined'
-    else: status = 'charged' # Fallback for any non-standard success codes
+    else: status = 'charged'
 
     final_response = {"status": status, "code": code, "message": result.get('message')}
     logging.info(f"Transaction result: {final_response}")
