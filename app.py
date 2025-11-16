@@ -25,11 +25,11 @@ DECLINED_CODES = {
     "VALIDATION_ERROR",
     "LOGIN_ERROR",
     "RISK_DISALLOWED",
-    "TOKEN_EXTRACTION_ERROR",  # Added
-    "NETWORK_ERROR",           # Added
-    "INTERNAL_ERROR",          # Added
-    "INVALID_MONTH",           # Added
-    "UNKNOWN_ERROR"            # Added
+    "TOKEN_EXTRACTION_ERROR",
+    "NETWORK_ERROR",
+    "INTERNAL_ERROR",
+    "INVALID_MONTH",
+    "UNKNOWN_ERROR"
 }
 
 # --- Antispam mechanism ---
@@ -130,10 +130,10 @@ def process_paypal_payment(card_details_string):
             'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
             'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'x-csrf-token': csrf_token, # Use the dynamically extracted token
+            'x-csrf-token': csrf_token,
         }
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1', # Note: amount is 1 here
+            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1',
             'currency': 'USD', 'currencySymbol': '$', 'funding_source': 'CARD',
             'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
         }
@@ -172,7 +172,7 @@ def process_paypal_payment(card_details_string):
         logging.error(f"Failed to extract token after {max_acquisition_retries} full acquisition attempts.")
         return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'Failed to extract token from PayPal response after multiple retries.'}
 
-    # --- Request 3: Submit Card Details ---
+    # --- Request 3: Submit Card Details (Improved Error Handling) ---
     headers = {
         'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
         'paypal-client-context': token, 'paypal-client-metadata-id': token,
@@ -181,7 +181,6 @@ def process_paypal_payment(card_details_string):
         'x-app-name': 'standardcardfields', 'x-country': 'US',
     }
 
-    # --- FIX: The complete, correctly formatted GraphQL query ---
     graphql_query = """
     mutation payWithCard(
         $token: String!
@@ -219,25 +218,6 @@ def process_paypal_payment(card_details_string):
             cart {
                 intent
                 cartId
-                buyer {
-                    userId
-                    auth {
-                        accessToken
-                    }
-                }
-                returnUrl {
-                    href
-                }
-            }
-            paymentContingencies {
-                threeDomainSecure {
-                    status
-                    method
-                    redirectUrl {
-                        href
-                    }
-                    parameter
-                }
             }
         }
     }
@@ -246,7 +226,7 @@ def process_paypal_payment(card_details_string):
     json_data = {
         'query': graphql_query.strip(),
         'variables': {
-            'token': token, 'card': card_details, 'phoneNumber': '4073320637', # Note: phone number is different
+            'token': token, 'card': card_details, 'phoneNumber': '4073320637',
             'firstName': 'Rockcy', 'lastName': 'og',
             'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
             'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
@@ -256,10 +236,30 @@ def process_paypal_payment(card_details_string):
     
     try:
         response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=20)
+
+        # Log the response status and body for debugging BEFORE parsing JSON
+        logging.info(f"PayPal GraphQL Status Code: {response.status_code}")
+        logging.info(f"PayPal GraphQL Response Body (first 500 chars): {response.text[:500]}")
+
+        # This will raise an HTTPError if the status code is 4xx or 5xx
+        response.raise_for_status()
+
+        # If the status code is OK, try to parse JSON
         response_data = response.json()
-    except (ValueError, requests.exceptions.RequestException) as e:
-        logging.error(f"Final GraphQL request failed: {e}. Response: {response.text}")
-        return {'code': 'INTERNAL_ERROR', 'message': 'Failed to submit payment to PayPal.'}
+
+    except requests.exceptions.HTTPError as e:
+        # This catches errors like 403 Forbidden, 404 Not Found, etc.
+        logging.error(f"PayPal returned an HTTP error: {e}. Status: {e.response.status_code}. Body: {e.response.text[:500]}")
+        # A 403 often means a block/bot detection, so RISK_DISALLOWED is a good fit.
+        return {'code': 'RISK_DISALLOWED', 'message': f'PayPal blocked the request (HTTP {e.response.status_code}). Check logs for details.'}
+    except requests.exceptions.RequestException as e:
+        # This catches network errors (timeouts, connection issues)
+        logging.error(f"Network error during final GraphQL request: {e}")
+        return {'code': 'NETWORK_ERROR', 'message': 'Failed to connect to PayPal for payment submission.'}
+    except ValueError:
+        # This catches JSON decoding errors if the body is not valid JSON
+        logging.error(f"Failed to decode JSON from PayPal. Status: {response.status_code}. Body: {response.text[:500]}")
+        return {'code': 'INTERNAL_ERROR', 'message': 'PayPal returned an invalid response format.'}
 
     # --- 3. Parse PayPal Response ---
     result = {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
@@ -294,7 +294,7 @@ def payment_gateway(card_details):
     last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
     logging.info(f"Received payment request for card ending in {last_four} from IP {client_ip}")
     
-    # Process payment directly (not in background)
+    # Process payment directly
     result = process_paypal_payment(card_details)
     
     code = result.get('code')
