@@ -35,7 +35,8 @@ DECLINED_CODES = {
     "UNKNOWN_ERROR",
     "INSUFFICIENT_FUNDS",
     "CARD_DECLINED",
-    "PROCESSING_ERROR"
+    "PROCESSING_ERROR",
+    "SHIPPING_ADDRESS_MISSING"
 }
 
 def extract_csrf_token(html_content: str) -> str:
@@ -162,6 +163,18 @@ def process_paypal_payment(card_details_string: str, amount: str = "1.00") -> Di
         'postalCode': '10010'
     }
 
+    # Address details
+    address_details = {
+        'givenName': 'John',
+        'familyName': 'Doe',
+        'line1': '123 Main St',
+        'line2': 'Apt 4B',
+        'city': 'New York',
+        'state': 'NY',
+        'postalCode': '10010',
+        'country': 'US'
+    }
+
     # --- 2. Execute PayPal Request Sequence ---
     session = create_session()
     token = None
@@ -250,12 +263,27 @@ def process_paypal_payment(card_details_string: str, amount: str = "1.00") -> Di
         }
 
         graphql_query = """
-        mutation payWithCard($token: String!, $card: CardInput, $billingAddress: AddressInput, $currencyConversionType: CheckoutCurrencyConversionType) {
+        mutation payWithCard(
+            $token: String!, 
+            $card: CardInput, 
+            $billingAddress: AddressInput, 
+            $shippingAddress: AddressInput,
+            $currencyConversionType: CheckoutCurrencyConversionType,
+            $phoneNumber: String,
+            $email: String,
+            $firstName: String,
+            $lastName: String
+        ) {
             approveGuestPaymentWithCreditCard(
                 token: $token
                 card: $card
                 billingAddress: $billingAddress
+                shippingAddress: $shippingAddress
                 currencyConversionType: $currencyConversionType
+                phoneNumber: $phoneNumber
+                email: $email
+                firstName: $firstName
+                lastName: $lastName
             ) {
                 cart {
                     intent
@@ -275,16 +303,13 @@ def process_paypal_payment(card_details_string: str, amount: str = "1.00") -> Di
             'variables': {
                 'token': token,
                 'card': card_details,
-                'billingAddress': {
-                    'givenName': 'John',
-                    'familyName': 'Doe',
-                    'line1': '123 Main St',
-                    'city': 'New York',
-                    'state': 'NY',
-                    'postalCode': '10010',
-                    'country': 'US'
-                },
-                'currencyConversionType': currency_conversion_type
+                'billingAddress': address_details,
+                'shippingAddress': address_details,
+                'currencyConversionType': currency_conversion_type,
+                'phoneNumber': '4073320637',
+                'email': 'rocky2@gmail.com',
+                'firstName': 'John',
+                'lastName': 'Doe'
             }
         }
         
@@ -306,22 +331,26 @@ def process_paypal_payment(card_details_string: str, amount: str = "1.00") -> Di
             
             logging.error(f"PayPal error: {error_code} - {error_message}")
             
-            if error_code in DECLINED_CODES:
-                return {
-                    'code': error_code,
-                    'message': 'Payment declined',
-                    'status': 'declined'
-                }
+            # Map PayPal error codes to our standard format
+            if error_code == 'SHIPPING_ADDRESS_MISSING':
+                mapped_code = 'SHIPPING_ADDRESS_MISSING'
+            elif error_code in DECLINED_CODES:
+                mapped_code = error_code
             elif error_code in APPROVED_CODES:
+                mapped_code = error_code
+            else:
+                mapped_code = 'UNKNOWN_ERROR'
+            
+            if mapped_code in APPROVED_CODES:
                 return {
-                    'code': error_code,
+                    'code': mapped_code,
                     'message': 'Payment approved',
                     'status': 'approved'
                 }
             else:
                 return {
-                    'code': error_code,
-                    'message': error_message,
+                    'code': mapped_code,
+                    'message': 'Payment declined',
                     'status': 'declined'
                 }
         
