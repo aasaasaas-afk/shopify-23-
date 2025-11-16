@@ -4,7 +4,6 @@ import logging
 import re
 import time
 from flask import Flask, jsonify, request
-from threading import Thread
 from collections import defaultdict
 
 # Configure logging
@@ -273,24 +272,6 @@ def process_paypal_payment(card_details_string):
     return result
 
 
-def background_process_payment(card_details, client_ip):
-    """Background thread function to process PayPal payment."""
-    last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
-    logging.info(f"Background processing payment request for card ending in {last_four} from IP {client_ip}")
-    
-    result = process_paypal_payment(card_details)
-    
-    code = result.get('code')
-    if code in APPROVED_CODES: status = 'approved'
-    elif code in DECLINED_CODES: status = 'declined'
-    else: status = 'charged'
-
-    final_response = {"status": status, "code": code, "message": result.get('message')}
-    logging.info(f"Background transaction result: {final_response}")
-    # In a real application, you might want to store this result in a database
-    # or send a notification to the client if they provided a callback URL
-
-
 @app.route('/gate=pp1/cc=<card_details>')
 def payment_gateway(card_details):
     """
@@ -310,17 +291,20 @@ def payment_gateway(card_details):
     
     last_request_time[client_ip] = current_time
     
-    # Start background processing
-    thread = Thread(target=background_process_payment, args=(card_details, client_ip))
-    thread.daemon = True
-    thread.start()
+    last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
+    logging.info(f"Received payment request for card ending in {last_four} from IP {client_ip}")
     
-    # Immediately return a response
-    return jsonify({
-        "status": "processing",
-        "code": "PROCESSING_STARTED",
-        "message": "Your payment is being processed in the background."
-    })
+    # Process payment directly (not in background)
+    result = process_paypal_payment(card_details)
+    
+    code = result.get('code')
+    if code in APPROVED_CODES: status = 'approved'
+    elif code in DECLINED_CODES: status = 'declined'
+    else: status = 'charged'
+
+    final_response = {"status": status, "code": code, "message": result.get('message')}
+    logging.info(f"Transaction result: {final_response}")
+    return jsonify(final_response)
 
 
 if __name__ == '__main__':
