@@ -250,12 +250,23 @@ def process_paypal_payment(card_details_string):
     except requests.exceptions.HTTPError as e:
         # This catches errors like 403 Forbidden, 404 Not Found, etc.
         logging.error(f"PayPal returned an HTTP error: {e}. Status: {e.response.status_code}. Body: {e.response.text[:500]}")
-        # A 403 often means a block/bot detection, so RISK_DISALLOWED is a good fit.
         return {'code': 'RISK_DISALLOWED', 'message': f'PayPal blocked the request (HTTP {e.response.status_code}). Check logs for details.'}
+    except requests.exceptions.Timeout:
+        # This catches a timeout error specifically
+        logging.error("The request to PayPal's GraphQL endpoint timed out after 20 seconds.")
+        return {'code': 'NETWORK_ERROR', 'message': 'The request to PayPal timed out. Please try again.'}
+    except requests.exceptions.ConnectionError as e:
+        # This catches DNS failures, refused connections, etc.
+        logging.error(f"Failed to connect to PayPal's GraphQL endpoint: {e}")
+        return {'code': 'NETWORK_ERROR', 'message': 'Could not connect to PayPal. Check your network connection or DNS settings.'}
+    except requests.exceptions.SSLError as e:
+        # This catches SSL certificate verification failures
+        logging.error(f"SSL Error when connecting to PayPal: {e}")
+        return {'code': 'NETWORK_ERROR', 'message': 'A secure connection to PayPal could not be established (SSL Error).'}
     except requests.exceptions.RequestException as e:
-        # This catches network errors (timeouts, connection issues)
-        logging.error(f"Network error during final GraphQL request: {e}")
-        return {'code': 'NETWORK_ERROR', 'message': 'Failed to connect to PayPal for payment submission.'}
+        # A general catch-all for any other request-related issues
+        logging.error(f"An unexpected network error occurred during the final GraphQL request: {e}")
+        return {'code': 'NETWORK_ERROR', 'message': 'An unknown network error occurred while contacting PayPal.'}
     except ValueError:
         # This catches JSON decoding errors if the body is not valid JSON
         logging.error(f"Failed to decode JSON from PayPal. Status: {response.status_code}. Body: {response.text[:500]}")
