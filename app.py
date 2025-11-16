@@ -4,6 +4,7 @@ import logging
 import re
 import time
 from flask import Flask, jsonify, request
+from urllib.parse import unquote
 
 # Configure logging
 logging.basicConfig(
@@ -32,15 +33,31 @@ DECLINED_CODES = {
 }
 
 def parse_proxy_string(proxy_string):
-    """Parses a proxy string 'ip:port:user:pass' into a requests-compatible dictionary."""
+    """Parses a proxy string in various formats into a requests-compatible dictionary."""
     try:
-        parts = proxy_string.split(':')
-        if len(parts) != 4:
-            raise ValueError("Invalid format. Expected ip:port:user:pass")
+        # URL decode the proxy string to handle encoded characters like %40 -> @
+        proxy_string = unquote(proxy_string)
         
-        ip, port, user, password = parts
-        proxy_url = f"http://{user}:{password}@{ip}:{port}"
-        return {'http': proxy_url, 'https': proxy_url}
+        # If the proxy string already includes the protocol, use it as is
+        if proxy_string.startswith('http://') or proxy_string.startswith('https://'):
+            return {'http': proxy_string, 'https': proxy_string}
+        
+        # Try to parse user:pass@ip:port format
+        if '@' in proxy_string:
+            auth_part, addr_part = proxy_string.split('@', 1)
+            if ':' in addr_part:
+                ip, port = addr_part.split(':', 1)
+                proxy_url = f"http://{auth_part}@{ip}:{port}"
+                return {'http': proxy_url, 'https': proxy_url}
+        
+        # Try to parse ip:port:user:pass format (original format)
+        parts = proxy_string.split(':')
+        if len(parts) == 4:
+            ip, port, user, password = parts
+            proxy_url = f"http://{user}:{password}@{ip}:{port}"
+            return {'http': proxy_url, 'https': proxy_url}
+        
+        raise ValueError("Invalid format. Expected http://user:pass@ip:port or user:pass@ip:port or ip:port:user:pass")
     except Exception as e:
         logging.error(f"Error parsing proxy string '{proxy_string}': {e}")
         raise ValueError(f"Could not parse proxy string: {e}")
@@ -302,13 +319,17 @@ def process_paypal_payment(card_details_string, proxy_config):
 def payment_gateway(card_details):
     """
     Main endpoint to process a payment.
-    URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}?proxy={ip:port:user:pass}
+    URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}?proxy={proxy_string}
+    Proxy string can be in formats:
+    - http://user:pass@ip:port
+    - user:pass@ip:port
+    - ip:port:user:pass
     """
     # 1. Get and validate the proxy parameter
     proxy_string = request.args.get('proxy')
     if not proxy_string:
         logging.error("Request denied: Proxy parameter is missing.")
-        return jsonify({"error": "Proxy parameter is required. Format: ?proxy=ip:port:user:pass"}), 400
+        return jsonify({"error": "Proxy parameter is required. Format: ?proxy=http://user:pass@ip:port or ?proxy=user:pass@ip:port or ?proxy=ip:port:user:pass"}), 400
 
     try:
         proxy_config = parse_proxy_string(proxy_string)
