@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from typing import Dict, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -41,15 +41,30 @@ ACQUISITION_RETRY_DELAY = 3
 REQUEST_TIMEOUT = 15
 GRAPHQL_TIMEOUT = 20
 
-# Create a connector with connection pooling
-connector = aiohttp.TCPConnector(
-    limit=100,  # Total connection pool size
-    limit_per_host=30,  # Connections per host
-    ttl_dns_cache=300,  # DNS cache TTL
-    use_dns_cache=True,
-    keepalive_timeout=30,
-    enable_cleanup_closed=True
-)
+# Global connector will be initialized in startup event
+connector = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize resources when the app starts."""
+    global connector
+    connector = aiohttp.TCPConnector(
+        limit=100,  # Total connection pool size
+        limit_per_host=30,  # Connections per host
+        ttl_dns_cache=300,  # DNS cache TTL
+        use_dns_cache=True,
+        keepalive_timeout=30,
+        enable_cleanup_closed=True
+    )
+    logging.info("Application startup complete")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources when the app shuts down."""
+    global connector
+    if connector:
+        await connector.close()
+    logging.info("Application shutdown complete")
 
 def extract_csrf_token(html_content):
     """Extract CSRF token from HTML content with multiple patterns."""
@@ -287,11 +302,11 @@ async def process_paypal_payment(card_details_string: str) -> Dict[str, str]:
         return result
 
 
-@app.get('/gate=pp1/cc={card_details}')
-async def payment_gateway(card_details: str):
+@app.get('/gate=pp1/cc')
+async def payment_gateway(card_details: str = Query(..., description="Card details in format: card_number|mm|yy|cvv")):
     """
     Main endpoint to process a payment.
-    URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}
+    URL Format: /gate=pp1/cc?card_details={card_number|mm|yy|cvv}
     """
     last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
     logging.info(f"Received payment request for card ending in {last_four}")
