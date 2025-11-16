@@ -181,6 +181,7 @@ def process_paypal_payment(card_details_string: str, amount: str = "1.00") -> Di
     
     try:
         # Step 1: Get CSRF token
+        csrf_token = None
         for attempt in range(3):
             try:
                 response = session.get(
@@ -201,54 +202,79 @@ def process_paypal_payment(card_details_string: str, amount: str = "1.00") -> Di
                 logging.error(f"Error getting CSRF token on attempt {attempt + 1}: {e}")
                 if attempt < 2:
                     time.sleep(2)
-        else:
+        
+        if not csrf_token:
             return {
                 'code': 'TOKEN_EXTRACTION_ERROR',
                 'message': 'Failed to obtain CSRF token',
                 'status': 'declined'
             }
 
-        # Step 2: Create order
-        headers = {
-            'Accept': '*/*',
-            'Content-Type': 'application/json',
-            'Origin': 'https://www.paypal.com',
-            'Referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
-            'X-CSRF-Token': csrf_token,
-            'X-Requested-With': 'XMLHttpRequest'
-        }
+        # Step 2: Create order with retry for CSRF mismatch
+        order_created = False
+        for attempt in range(3):
+            headers = {
+                'Accept': '*/*',
+                'Content-Type': 'application/json',
+                'Origin': 'https://www.paypal.com',
+                'Referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
+                'X-CSRF-Token': csrf_token,
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+            
+            json_data = {
+                'link_id': 'R2FGT68WSSRLW',
+                'merchant_id': '32BACX6X7PYMG',
+                'quantity': '1',
+                'amount': amount,
+                'currency': 'USD',
+                'currencySymbol': '$',
+                'funding_source': 'CARD',
+                'button_type': 'VARIABLE_PRICE',
+                'csrfRetryEnabled': True
+            }
+            
+            try:
+                response = session.post(
+                    'https://www.paypal.com/ncp/api/create-order',
+                    headers=headers,
+                    json=json_data,
+                    timeout=10
+                )
+                
+                # Check for CSRF mismatch
+                if response.status_code == 403:
+                    try:
+                        error_data = response.json()
+                        if error_data.get('message') == 'CSRF_MISMATCH_RETRY' and 'csrfToken' in error_data:
+                            csrf_token = error_data['csrfToken']
+                            logging.info(f"Got new CSRF token for retry: {csrf_token[:20]}...")
+                            continue
+                    except:
+                        pass
+                
+                response.raise_for_status()
+                response_data = response.json()
+                
+                if 'context_id' in response_data:
+                    token = response_data['context_id']
+                    logging.info(f"Payment token obtained: {token}")
+                    order_created = True
+                    break
+                else:
+                    logging.error(f"No context_id in response: {response_data}")
+                    
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error creating order on attempt {attempt + 1}: {e}")
+                if attempt < 2:
+                    time.sleep(2)
         
-        json_data = {
-            'link_id': 'R2FGT68WSSRLW',
-            'merchant_id': '32BACX6X7PYMG',
-            'quantity': '1',
-            'amount': amount,
-            'currency': 'USD',
-            'currencySymbol': '$',
-            'funding_source': 'CARD',
-            'button_type': 'VARIABLE_PRICE',
-            'csrfRetryEnabled': True
-        }
-        
-        response = session.post(
-            'https://www.paypal.com/ncp/api/create-order',
-            headers=headers,
-            json=json_data,
-            timeout=10
-        )
-        response.raise_for_status()
-        response_data = response.json()
-        
-        if 'context_id' not in response_data:
-            logging.error(f"No context_id in response: {response_data}")
+        if not order_created or not token:
             return {
                 'code': 'TOKEN_EXTRACTION_ERROR',
-                'message': 'Failed to create order',
+                'message': 'Failed to create order after retries',
                 'status': 'declined'
             }
-        
-        token = response_data['context_id']
-        logging.info(f"Payment token obtained: {token}")
 
         # Step 3: Submit card details
         headers = {
