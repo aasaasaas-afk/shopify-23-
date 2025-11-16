@@ -95,10 +95,17 @@ def process_paypal_payment(card_details_string):
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
-                'Cache-Control': 'no-cache', 'Pragma': 'no-cache',
+                'Cache-Control': 'no-cache', 
+                'Pragma': 'no-cache',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1'
             }
             try:
-                response = session.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', headers=headers, timeout=15)
+                response = session.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', headers=headers, timeout=30)
                 response.raise_for_status()
                 csrf_token = extract_csrf_token(response.text)
                 if csrf_token:
@@ -122,19 +129,32 @@ def process_paypal_payment(card_details_string):
 
         # --- Request 2: Create Order ---
         headers = {
-            'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
+            'accept': '*/*', 
+            'content-type': 'application/json', 
+            'origin': 'https://www.paypal.com',
             'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'x-csrf-token': csrf_token, # Use the dynamically extracted token
+            'x-csrf-token': csrf_token,
+            'x-requested-with': 'XMLHttpRequest',
+            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'Connection': 'keep-alive'
         }
         json_data = {
-            'link_id': 'R2FGT68WSSRLW', 'merchant_id': '32BACX6X7PYMG', 'quantity': '1', 'amount': '1', # Note: amount is 1 here
-            'currency': 'USD', 'currencySymbol': '$', 'funding_source': 'CARD',
-            'button_type': 'VARIABLE_PRICE', 'csrfRetryEnabled': True,
+            'link_id': 'R2FGT68WSSRLW', 
+            'merchant_id': '32BACX6X7PYMG', 
+            'quantity': '1', 
+            'amount': '1',
+            'currency': 'USD', 
+            'currencySymbol': '$', 
+            'funding_source': 'CARD',
+            'button_type': 'VARIABLE_PRICE', 
+            'csrfRetryEnabled': True,
         }
         
         try:
-            response = session.post('https://www.paypal.com/ncp/api/create-order', cookies=session.cookies, headers=headers, json=json_data, timeout=10)
+            response = session.post('https://www.paypal.com/ncp/api/create-order', cookies=session.cookies, headers=headers, json=json_data, timeout=30)
             response.raise_for_status()
             response_data = response.json()
         except requests.exceptions.RequestException as e:
@@ -152,8 +172,16 @@ def process_paypal_payment(card_details_string):
             else:
                 return {'code': 'TOKEN_EXTRACTION_ERROR', 'message': 'PayPal returned an invalid JSON response.'}
         
+        # Check for token in multiple possible fields
+        token = None
         if 'context_id' in response_data:
             token = response_data['context_id']
+        elif 'token' in response_data:
+            token = response_data['token']
+        elif 'id' in response_data:
+            token = response_data['id']
+        
+        if token:
             logging.info(f"Successfully extracted token: {token}")
             break
         else:
@@ -169,11 +197,20 @@ def process_paypal_payment(card_details_string):
 
     # --- Request 3: Submit Card Details ---
     headers = {
-        'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://www.paypal.com',
-        'paypal-client-context': token, 'paypal-client-metadata-id': token,
+        'accept': '*/*', 
+        'content-type': 'application/json', 
+        'origin': 'https://www.paypal.com',
+        'paypal-client-context': token, 
+        'paypal-client-metadata-id': token,
         'referer': f'https://www.paypal.com/smart/card-fields?token={token}',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'x-app-name': 'standardcardfields', 'x-country': 'US',
+        'x-app-name': 'standardcardfields', 
+        'x-country': 'US',
+        'x-requested-with': 'XMLHttpRequest',
+        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'Connection': 'keep-alive'
     }
 
     # --- FIX: The complete, correctly formatted GraphQL query ---
@@ -241,28 +278,63 @@ def process_paypal_payment(card_details_string):
     json_data = {
         'query': graphql_query.strip(),
         'variables': {
-            'token': token, 'card': card_details, 'phoneNumber': '4073320637', # Note: phone number is different
-            'firstName': 'Rockcy', 'lastName': 'og',
-            'billingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
-            'shippingAddress': {'givenName': 'Rockcy', 'familyName': 'og', 'line1': '15th street', 'line2': '12', 'city': 'ny', 'state': 'NY', 'postalCode': '10010', 'country': 'US'},
-            'email': 'rocky2@gmail.com', 'currencyConversionType': currency_conversion_type,
-        }, 'operationName': None,
+            'token': token, 
+            'card': card_details, 
+            'phoneNumber': '4073320637',
+            'firstName': 'Rockcy', 
+            'lastName': 'og',
+            'billingAddress': {
+                'givenName': 'Rockcy', 
+                'familyName': 'og', 
+                'line1': '15th street', 
+                'line2': '12', 
+                'city': 'ny', 
+                'state': 'NY', 
+                'postalCode': '10010', 
+                'country': 'US'
+            },
+            'shippingAddress': {
+                'givenName': 'Rockcy', 
+                'familyName': 'og', 
+                'line1': '15th street', 
+                'line2': '12', 
+                'city': 'ny', 
+                'state': 'NY', 
+                'postalCode': '10010', 
+                'country': 'US'
+            },
+            'email': 'rocky2@gmail.com', 
+            'currencyConversionType': currency_conversion_type,
+        }, 
+        'operationName': None,
     }
     
     try:
-        response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=20)
+        response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=30)
+        response.raise_for_status()
         response_data = response.json()
     except (ValueError, requests.exceptions.RequestException) as e:
-        logging.error(f"Final GraphQL request failed: {e}. Response: {response.text}")
+        logging.error(f"Final GraphQL request failed: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
         return {'code': 'INTERNAL_ERROR', 'message': 'Failed to submit payment to PayPal.'}
 
     # --- 3. Parse PayPal Response ---
     result = {'code': 'TRANSACTION_SUCCESSFUL', 'message': 'Payment processed successfully.'}
+    
+    # Check for errors in different possible locations
     if 'errors' in response_data and response_data['errors']:
         logging.error(f"PayPal GraphQL error: {json.dumps(response_data)}")
         error_data = response_data['errors'][0]
         result['code'] = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
         result['message'] = error_data.get('message', 'An unknown error occurred.')
+    elif 'data' in response_data and 'approveGuestPaymentWithCreditCard' in response_data['data']:
+        payment_result = response_data['data']['approveGuestPaymentWithCreditCard']
+        if 'paymentContingencies' in payment_result and payment_result['paymentContingencies']:
+            contingencies = payment_result['paymentContingencies']
+            if 'threeDomainSecure' in contingencies and contingencies['threeDomainSecure']:
+                secure_data = contingencies['threeDomainSecure']
+                if secure_data.get('status') == 'REQUIRED':
+                    result['code'] = '3DS_REQUIRED'
+                    result['message'] = '3D Secure authentication is required.'
     
     return result
 
@@ -279,9 +351,12 @@ def payment_gateway(card_details):
     result = process_paypal_payment(card_details)
     
     code = result.get('code')
-    if code in APPROVED_CODES: status = 'approved'
-    elif code in DECLINED_CODES: status = 'declined'
-    else: status = 'charged'
+    if code in APPROVED_CODES: 
+        status = 'approved'
+    elif code in DECLINED_CODES: 
+        status = 'declined'
+    else: 
+        status = 'charged'
 
     final_response = {"status": status, "code": code, "message": result.get('message')}
     logging.info(f"Transaction result: {final_response}")
