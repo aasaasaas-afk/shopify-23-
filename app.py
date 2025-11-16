@@ -30,7 +30,8 @@ DECLINED_CODES = {
     "NETWORK_ERROR",
     "INTERNAL_ERROR",
     "INVALID_MONTH",
-    "UNKNOWN_ERROR"
+    "UNKNOWN_ERROR",
+    "SECURITY_CHALLENGE"  # New code for CAPTCHA challenges
 }
 
 # --- Constants ---
@@ -75,7 +76,9 @@ def extract_csrf_token(html_content):
             r'name=["\']csrf["\']\s+value=["\']([^"\']+)["\']',
             r'data-csrf=["\']([^"\']+)["\']',
             r'"token":"([^"]+)"',
-            r'name="_token"\s+value="([^"]+)"'
+            r'name="_token"\s+value="([^"]+)"',
+            r'data-csrf-token="([^"]+)"',  # Added for PayPal's specific format
+            r'name="_csrf"\s+value="([^"]+)"'  # Added for PayPal's specific format
         ]
         
         for pattern in patterns:
@@ -88,6 +91,23 @@ def extract_csrf_token(html_content):
     except Exception as e:
         logging.error(f"Error extracting CSRF token: {e}")
         return None
+
+def detect_security_challenge(html_content):
+    """Detect if PayPal is presenting a security challenge (CAPTCHA)."""
+    challenge_indicators = [
+        'data-captcha-type',
+        'recaptcha',
+        'authcaptcha',
+        'security check',
+        'challenge'
+    ]
+    
+    content_lower = html_content.lower()
+    for indicator in challenge_indicators:
+        if indicator in content_lower:
+            return True
+    
+    return False
 
 async def process_paypal_payment(card_details_string: str) -> Dict[str, str]:
     """
@@ -135,6 +155,12 @@ async def process_paypal_payment(card_details_string: str) -> Dict[str, str]:
                     async with session.get('https://www.paypal.com/ncp/payment/R2FGT68WSSRLW', headers=headers, timeout=REQUEST_TIMEOUT) as response:
                         response.raise_for_status()
                         html_content = await response.text()
+                        
+                        # Check for security challenge
+                        if detect_security_challenge(html_content):
+                            logging.warning("PayPal security challenge detected. This may require manual intervention.")
+                            return {'code': 'SECURITY_CHALLENGE', 'message': 'PayPal is requesting additional security verification (CAPTCHA). Please try again later or use a different payment method.'}
+                        
                         csrf_token = extract_csrf_token(html_content)
                         if csrf_token:
                             logging.info(f"Successfully extracted CSRF token on attempt {csrf_attempt + 1}.")
@@ -286,9 +312,20 @@ async def process_paypal_payment(card_details_string: str) -> Dict[str, str]:
         
         try:
             async with session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', headers=headers, json=json_data, timeout=GRAPHQL_TIMEOUT) as response:
+                # Check if we got HTML instead of JSON (likely a CAPTCHA challenge)
+                content_type = response.headers.get('Content-Type', '')
+                if 'text/html' in content_type:
+                    html_content = await response.text()
+                    if detect_security_challenge(html_content):
+                        logging.warning("PayPal security challenge detected during GraphQL request.")
+                        return {'code': 'SECURITY_CHALLENGE', 'message': 'PayPal is requesting additional security verification (CAPTCHA). Please try again later or use a different payment method.'}
+                
                 response_data = await response.json()
-        except (json.JSONDecodeError, aiohttp.ContentTypeError, aiohttp.ClientError) as e:
-            logging.error(f"Final GraphQL request failed: {e}. Response: {await response.text()}")
+        except (json.JSONDecodeError, aiohttp.ContentTypeError) as e:
+            logging.error(f"Final GraphQL request failed with JSON error: {e}. Response content-type: {response.headers.get('Content-Type', 'unknown')}")
+            return {'code': 'SECURITY_CHALLENGE', 'message': 'PayPal is requesting additional security verification. Please try again later or use a different payment method.'}
+        except aiohttp.ClientError as e:
+            logging.error(f"Final GraphQL request failed with network error: {e}")
             return {'code': 'INTERNAL_ERROR', 'message': 'Failed to submit payment to PayPal.'}
 
         # --- 3. Parse PayPal Response ---
