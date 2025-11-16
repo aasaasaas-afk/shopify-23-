@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from flask import Flask, jsonify
 
 # Configure logging
@@ -77,14 +78,25 @@ def process_paypal_payment(card_details_string):
         return {'code': 'VALIDATION_ERROR', 'message': 'Invalid CVV format.'}
 
     expiry_date = f"{month}/{year}"
-    card_type = 'VISA' if card_number.startswith('4') else ('MASTER_CARD' if card_number.startswith('5') else ('AMEX' if card_number.startswith('3') else 'UNKNOWN'))
-    currency_conversion_type = 'VENDOR' if card_type == 'AMEX' else 'PAYPAL'
-    card_details = {'cardNumber': card_number, 'type': card_type, 'expirationDate': expiry_date, 'securityCode': cvv, 'postalCode': '10010'}
+    # Fixed: Use lowercase card types which is more common in APIs
+    card_type = 'visa' if card_number.startswith('4') else ('mastercard' if card_number.startswith('5') else ('amex' if card_number.startswith('3') else 'unknown'))
+    currency_conversion_type = 'VENDOR' if card_type == 'amex' else 'PAYPAL'
+    # Fixed: Added name field to card details
+    card_details = {
+        'cardNumber': card_number, 
+        'type': card_type, 
+        'expirationDate': expiry_date, 
+        'securityCode': cvv, 
+        'name': 'Rockcy og',  # Added cardholder name
+        'postalCode': '10010'
+    }
 
     # --- 2. Execute PayPal Request Sequence with Comprehensive Retry Logic ---
     
     session = requests.Session()
     token = None
+    # Fixed: Generate a unique client metadata ID for the session
+    client_metadata_id = str(uuid.uuid4())
     
     max_acquisition_retries = 3
     for acquisition_attempt in range(max_acquisition_retries):
@@ -92,7 +104,7 @@ def process_paypal_payment(card_details_string):
         max_csrf_retries = 3
         for csrf_attempt in range(max_csrf_retries):
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Cache-Control': 'no-cache', 
@@ -133,10 +145,10 @@ def process_paypal_payment(card_details_string):
             'content-type': 'application/json', 
             'origin': 'https://www.paypal.com',
             'referer': 'https://www.paypal.com/ncp/payment/R2FGT68WSSRLW',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'x-csrf-token': csrf_token,
             'x-requested-with': 'XMLHttpRequest',
-            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'sec-ch-ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"Windows"',
             'Connection': 'keep-alive'
@@ -151,6 +163,7 @@ def process_paypal_payment(card_details_string):
             'funding_source': 'CARD',
             'button_type': 'VARIABLE_PRICE', 
             'csrfRetryEnabled': True,
+            'clientMetadataId': client_metadata_id,  # Fixed: Added clientMetadataId
         }
         
         try:
@@ -203,72 +216,78 @@ def process_paypal_payment(card_details_string):
         'paypal-client-context': token, 
         'paypal-client-metadata-id': token,
         'referer': f'https://www.paypal.com/smart/card-fields?token={token}',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'x-app-name': 'standardcardfields', 
         'x-country': 'US',
         'x-requested-with': 'XMLHttpRequest',
-        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'PayPal-Client-Metadata-Id': client_metadata_id,  # Fixed: Added to headers
+        'sec-ch-ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'Connection': 'keep-alive'
     }
 
-    # --- FIX: The complete, correctly formatted GraphQL query ---
+    # Fixed: Updated GraphQL query with proper structure
     graphql_query = """
     mutation payWithCard(
         $token: String!
-        $card: CardInput
-        $paymentToken: String
+        $card: CardInput!
+        $billingAddress: AddressInput!
+        $shippingAddress: AddressInput!
         $phoneNumber: String
         $firstName: String
         $lastName: String
-        $shippingAddress: AddressInput
-        $billingAddress: AddressInput
         $email: String
         $currencyConversionType: CheckoutCurrencyConversionType
-        $installmentTerm: Int
-        $identityDocument: IdentityDocumentInput
-        $feeReferenceId: String
+        $clientMetadataId: String
     ) {
         approveGuestPaymentWithCreditCard(
             token: $token
             card: $card
-            paymentToken: $paymentToken
+            billingAddress: $billingAddress
+            shippingAddress: $shippingAddress
             phoneNumber: $phoneNumber
             firstName: $firstName
             lastName: $lastName
             email: $email
-            shippingAddress: $shippingAddress
-            billingAddress: $billingAddress
             currencyConversionType: $currencyConversionType
-            installmentTerm: $installmentTerm
-            identityDocument: $identityDocument
-            feeReferenceId: $feeReferenceId
+            clientMetadataId: $clientMetadataId
         ) {
-            flags {
-                is3DSecureRequired
-            }
-            cart {
-                intent
-                cartId
-                buyer {
-                    userId
-                    auth {
-                        accessToken
+            ... on PaymentApproveResponse {
+                cart {
+                    intent
+                    checkoutSessionToken
+                }
+                payer {
+                    name {
+                        givenName
+                        surname
+                    }
+                    email
+                    address {
+                        countryCode
                     }
                 }
-                returnUrl {
-                    href
+                status
+            }
+            ... on PaymentContingencyResponse {
+                contingencies {
+                    ... on ThreeDomainSecureContingency {
+                        status
+                        method
+                        redirectUrl {
+                            href
+                        }
+                    }
                 }
             }
-            paymentContingencies {
-                threeDomainSecure {
-                    status
-                    method
-                    redirectUrl {
-                        href
+            ... on ErrorResponse {
+                errors {
+                    code
+                    message
+                    details {
+                        issue
                     }
-                    parameter
                 }
             }
         }
@@ -276,7 +295,7 @@ def process_paypal_payment(card_details_string):
     """
     
     json_data = {
-        'query': graphql_query.strip(),
+        'query': graphql_query.strip().replace("\n", ""),
         'variables': {
             'token': token, 
             'card': card_details, 
@@ -287,7 +306,6 @@ def process_paypal_payment(card_details_string):
                 'givenName': 'Rockcy', 
                 'familyName': 'og', 
                 'line1': '15th street', 
-                'line2': '12', 
                 'city': 'ny', 
                 'state': 'NY', 
                 'postalCode': '10010', 
@@ -297,7 +315,6 @@ def process_paypal_payment(card_details_string):
                 'givenName': 'Rockcy', 
                 'familyName': 'og', 
                 'line1': '15th street', 
-                'line2': '12', 
                 'city': 'ny', 
                 'state': 'NY', 
                 'postalCode': '10010', 
@@ -305,16 +322,21 @@ def process_paypal_payment(card_details_string):
             },
             'email': 'rocky2@gmail.com', 
             'currencyConversionType': currency_conversion_type,
+            'clientMetadataId': client_metadata_id  # Fixed: Added to variables
         }, 
-        'operationName': None,
+        'operationName': 'payWithCard',  # Fixed: Added operation name
     }
     
     try:
-        response = session.post('https://www.paypal.com/graphql?fetch_credit_form_submit', cookies=session.cookies, headers=headers, json=json_data, timeout=30)
+        # Fixed: Updated URL to just /graphql
+        response = session.post('https://www.paypal.com/graphql', cookies=session.cookies, headers=headers, json=json_data, timeout=30)
         response.raise_for_status()
         response_data = response.json()
     except (ValueError, requests.exceptions.RequestException) as e:
-        logging.error(f"Final GraphQL request failed: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
+        # Fixed: Enhanced logging for debugging
+        logging.error(f"Final GraphQL request failed. Status: {response.status_code}. Error: {e}")
+        logging.error(f"Response Headers: {response.headers}")
+        logging.error(f"Response Body: {response.text}")
         return {'code': 'INTERNAL_ERROR', 'message': 'Failed to submit payment to PayPal.'}
 
     # --- 3. Parse PayPal Response ---
@@ -324,17 +346,17 @@ def process_paypal_payment(card_details_string):
     if 'errors' in response_data and response_data['errors']:
         logging.error(f"PayPal GraphQL error: {json.dumps(response_data)}")
         error_data = response_data['errors'][0]
-        result['code'] = error_data.get('data', [{}])[0].get('code', 'UNKNOWN_ERROR')
+        result['code'] = error_data.get('code', 'UNKNOWN_ERROR')
         result['message'] = error_data.get('message', 'An unknown error occurred.')
-    elif 'data' in response_data and 'approveGuestPaymentWithCreditCard' in response_data['data']:
+    elif 'data' in response_data and response_data['data'] and 'approveGuestPaymentWithCreditCard' in response_data['data']:
         payment_result = response_data['data']['approveGuestPaymentWithCreditCard']
-        if 'paymentContingencies' in payment_result and payment_result['paymentContingencies']:
-            contingencies = payment_result['paymentContingencies']
-            if 'threeDomainSecure' in contingencies and contingencies['threeDomainSecure']:
-                secure_data = contingencies['threeDomainSecure']
-                if secure_data.get('status') == 'REQUIRED':
-                    result['code'] = '3DS_REQUIRED'
-                    result['message'] = '3D Secure authentication is required.'
+        if 'errors' in payment_result and payment_result['errors']:
+            error_data = payment_result['errors'][0]
+            result['code'] = error_data.get('code', 'UNKNOWN_ERROR')
+            result['message'] = error_data.get('message', 'An unknown error occurred.')
+        elif 'contingencies' in payment_result and payment_result['contingencies']:
+            result['code'] = '3DS_REQUIRED'
+            result['message'] = '3D Secure authentication is required.'
     
     return result
 
