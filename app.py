@@ -59,8 +59,7 @@ def process_paypal_payment(card_details_string, amount="1.00"):
     """
     Processes the PayPal payment using the provided card details string.
     The string should be in the format: 'card_number|mm|yy|cvv'
-    Returns a dictionary with processing results in the format:
-    {"code": "{code}", "message": "{msg}", "status": "{status}"}
+    Returns a dictionary with processing results including timing.
     """
     start_time = time.time()
     
@@ -68,41 +67,51 @@ def process_paypal_payment(card_details_string, amount="1.00"):
     parts = card_details_string.split('|')
     if len(parts) != 4:
         return {
-            "code": "VALIDATION_ERROR",
-            "message": "Invalid card details format. Expected: card_number|mm|yy|cvv",
-            "status": "DECLINED"
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
         }
 
     card_number, month, year, cvv = [p.strip() for p in parts]
 
     if not month.isdigit() or len(month) != 2 or not (1 <= int(month) <= 12):
         return {
-            "code": "INVALID_MONTH",
-            "message": "Invalid expiration month. Must be between 01 and 12",
-            "status": "DECLINED"
+            'result': 'DECLINED|INVALID_MONTH: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
         }
     
     if not year.isdigit():
         return {
-            "code": "VALIDATION_ERROR",
-            "message": "Invalid expiration year format",
-            "status": "DECLINED"
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
         }
     
     if len(year) == 2: 
         year = '20' + year
     elif len(year) != 4: 
         return {
-            "code": "VALIDATION_ERROR",
-            "message": "Invalid expiration year format",
-            "status": "DECLINED"
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
         }
     
     if not cvv.isdigit() or not (3 <= len(cvv) <= 4):
         return {
-            "code": "VALIDATION_ERROR",
-            "message": "Invalid CVV. Must be 3 or 4 digits",
-            "status": "DECLINED"
+            'result': 'DECLINED|VALIDATION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': '0.00s',
+            'timestamp': int(time.time())
         }
 
     expiry_date = f"{month}/{year}"
@@ -147,10 +156,14 @@ def process_paypal_payment(card_details_string, amount="1.00"):
                 time.sleep(3)
                 continue
             else:
+                end_time = time.time()
+                processing_time = f"{end_time - start_time:.2f}s"
                 return {
-                    "code": "TOKEN_EXTRACTION_ERROR",
-                    "message": "Failed to extract CSRF token from PayPal",
-                    "status": "DECLINED"
+                    'result': 'DECLINED|TOKEN_EXTRACTION_ERROR: R_ERROR-0.01',
+                    'amount': amount,
+                    'dev': '@Xcracker911',
+                    'time': processing_time,
+                    'timestamp': int(time.time())
                 }
 
         # --- Request 2: Create Order ---
@@ -176,10 +189,14 @@ def process_paypal_payment(card_details_string, amount="1.00"):
                 time.sleep(3)
                 continue
             else:
+                end_time = time.time()
+                processing_time = f"{end_time - start_time:.2f}s"
                 return {
-                    "code": "NETWORK_ERROR",
-                    "message": "Network error while creating PayPal order",
-                    "status": "DECLINED"
+                    'result': 'DECLINED|NETWORK_ERROR: R_ERROR-0.01',
+                    'amount': amount,
+                    'dev': '@Xcracker911',
+                    'time': processing_time,
+                    'timestamp': int(time.time())
                 }
         except ValueError:
             logging.error(f"Invalid JSON response from create-order on acquisition try {acquisition_attempt + 1}: {response.text}")
@@ -187,10 +204,14 @@ def process_paypal_payment(card_details_string, amount="1.00"):
                 time.sleep(3)
                 continue
             else:
+                end_time = time.time()
+                processing_time = f"{end_time - start_time:.2f}s"
                 return {
-                    "code": "TOKEN_EXTRACTION_ERROR",
-                    "message": "Invalid response from PayPal order creation",
-                    "status": "DECLINED"
+                    'result': 'DECLINED|TOKEN_EXTRACTION_ERROR: R_ERROR-0.01',
+                    'amount': amount,
+                    'dev': '@Xcracker911',
+                    'time': processing_time,
+                    'timestamp': int(time.time())
                 }
         
         if 'context_id' in response_data:
@@ -206,10 +227,14 @@ def process_paypal_payment(card_details_string, amount="1.00"):
 
     if not token:
         logging.error(f"Failed to extract token after {max_acquisition_retries} full acquisition attempts.")
+        end_time = time.time()
+        processing_time = f"{end_time - start_time:.2f}s"
         return {
-            "code": "TOKEN_EXTRACTION_ERROR",
-            "message": "Failed to extract payment token from PayPal",
-            "status": "DECLINED"
+            'result': 'DECLINED|TOKEN_EXTRACTION_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': processing_time,
+            'timestamp': int(time.time())
         }
 
     # --- Request 3: Submit Card Details ---
@@ -298,10 +323,14 @@ def process_paypal_payment(card_details_string, amount="1.00"):
         response_data = response.json()
     except (ValueError, requests.exceptions.RequestException) as e:
         logging.error(f"Final GraphQL request failed: {e}. Response: {response.text}")
+        end_time = time.time()
+        processing_time = f"{end_time - start_time:.2f}s"
         return {
-            "code": "INTERNAL_ERROR",
-            "message": "Internal error during payment processing",
-            "status": "DECLINED"
+            'result': 'DECLINED|INTERNAL_ERROR: R_ERROR-0.01',
+            'amount': amount,
+            'dev': '@Xcracker911',
+            'time': processing_time,
+            'timestamp': int(time.time())
         }
 
     # --- 3. Parse PayPal Response and Format Result ---
@@ -325,10 +354,14 @@ def process_paypal_payment(card_details_string, amount="1.00"):
     else:
         status = 'CHARGED'
     
+    result_string = f"{status}|{result_code}: R_ERROR-{amount}"
+    
     return {
-        "code": result_code,
-        "message": result_message,
-        "status": status
+        'amount': amount,
+        'dev': '@Xcracker911',
+        'result': result_string,
+        'time': processing_time,
+        'timestamp': int(time.time())
     }
 
 
@@ -337,7 +370,6 @@ def payment_gateway():
     """
     Main endpoint to process a payment.
     URL Format: /pp?cc=card_number|mm|yy|cvv&amount=0.01
-    Returns only: {"code": "{code}", "message": "{msg}", "status": "{status}"}
     """
     card_details = request.args.get('cc', '')
     amount = request.args.get('amount', '0.01')
